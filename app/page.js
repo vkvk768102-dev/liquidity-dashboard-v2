@@ -3,17 +3,17 @@
 import { useEffect, useState, useCallback } from "react";
 import IndicatorCard from "./components/IndicatorCard";
 
-function fmtEok(usd) {
-  // USD -> "억 달러" (1억 = 1e8)
-  const eok = usd / 1e8;
-  const sign = eok >= 0 ? "" : "-";
-  return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억 달러`;
+function fmtManGyeyak(contracts) {
+  // 계약 수 -> "만 계약" (1만 = 10,000)
+  const man = contracts / 10000;
+  const sign = man >= 0 ? "" : "-";
+  return `${sign}${Math.abs(man).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만 계약`;
 }
 
-function fmtEokDiff(usd) {
-  const eok = usd / 1e8;
-  const sign = eok >= 0 ? "+" : "-";
-  return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
+function fmtManGyeyakDiff(contracts) {
+  const man = contracts / 10000;
+  const sign = man >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(man).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만`;
 }
 
 async function fetchJson(url) {
@@ -149,18 +149,18 @@ export default function Home() {
         <IndicatorCard
           number={6}
           title="CFTC TFF Positioning (10년물)"
-          subtitle="레버리지드펀드 10년물 국채선물 순포지션 (명목가치)"
+          subtitle="레버리지드펀드 10년물 국채선물 순포지션 (계약 수)"
           loading={tff.loading}
           error={tff.error}
           latestDateLabel={tffData?.latestDate ?? "-"}
-          valueLabel={tffData?.latestValue != null ? fmtEok(tffData.latestValue) : "-"}
-          changeLabel={tffData?.change != null ? fmtEokDiff(tffData.change) : null}
+          valueLabel={tffData?.latestValue != null ? fmtManGyeyak(tffData.latestValue) : "-"}
+          changeLabel={tffData?.change != null ? fmtManGyeyakDiff(tffData.change) : null}
           changeIsUp={tffChangeUp}
           sparklinePoints={
             tffData?.points?.map((p) => ({
               date: p.date,
               y: p.value,
-              label: Math.round(p.value / 1e8).toLocaleString("ko-KR"),
+              label: (p.value / 10000).toLocaleString("ko-KR", { maximumFractionDigits: 1 }),
             })) ?? []
           }
           sparklineColor="#16a34a"
@@ -170,8 +170,8 @@ export default function Home() {
       </div>
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
-        * 데이터 출처: NY Fed Primary Dealer Statistics, CFTC Traders in Financial Futures
-        (둘 다 OFR data.financialresearch.gov 공개 API 경유, 별도 API 키 불필요).
+        * 데이터 출처: NY Fed Primary Dealer Statistics (공식 API), CFTC Traders in Financial
+        Futures (공식 API, publicreporting.cftc.gov). 별도 API 키 불필요.
         <br />
         * &quot;레버리지 배수&quot;는 공식 발표 지표가 아니라 &quot;국채 레포 자금조달 ÷ 딜러
         국채 순포지션&quot;으로 계산한 프록시(근사) 지표입니다.
