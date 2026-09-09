@@ -44,6 +44,19 @@ function fmtEokFromMillionsDiff(millions) {
   return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
 }
 
+function fmtEokUsdRaw(usd) {
+  if (usd == null) return "-";
+  const eok = usd / 1e8;
+  const sign = eok >= 0 ? "" : "-";
+  return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억 달러`;
+}
+function fmtEokUsdRawDiff(usd) {
+  if (usd == null) return null;
+  const eok = usd / 1e8;
+  const sign = eok >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
+}
+
 async function fetchJson(url) {
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
@@ -61,6 +74,7 @@ export default function Home() {
   const [pdbs, setPdbs] = useState(EMPTY);
   const [dealer, setDealer] = useState(EMPTY);
   const [tff, setTff] = useState(EMPTY);
+  const [triparty, setTriparty] = useState(EMPTY);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const load = useCallback(async () => {
@@ -69,6 +83,7 @@ export default function Home() {
     setPdbs((s) => ({ ...s, loading: true, error: null }));
     setDealer((s) => ({ ...s, loading: true, error: null }));
     setTff((s) => ({ ...s, loading: true, error: null }));
+    setTriparty((s) => ({ ...s, loading: true, error: null }));
 
     const jobs = [
       ["repo-rate", setSofr],
@@ -76,6 +91,7 @@ export default function Home() {
       ["pd-balance-sheet", setPdbs],
       ["dealer-financing", setDealer],
       ["cftc-tff", setTff],
+      ["tri-party-volume", setTriparty],
     ];
 
     await Promise.all(
@@ -148,6 +164,29 @@ export default function Home() {
         ? "숏 포지션 축소. 약세 완화"
         : "전주 대비 변동 없음"
       : "";
+
+  const tripartyData = triparty.data;
+  const tripartyChangeUp = tripartyData?.change != null ? tripartyData.change > 0 : null;
+  const tripartyInterpretation = tripartyData?.stale
+    ? "이 데이터 출처는 최신으로 갱신되지 않는 것으로 보입니다"
+    : tripartyData?.change != null
+    ? tripartyData.change >= 0
+      ? "잔액 소폭 증가. 담보 시장 유동성 안정적"
+      : "잔액 소폭 감소. 담보 시장 유동성 흐름 참고용"
+    : "";
+
+  // 종합 신호등: 로딩된 지표 중 경계(빨강) 신호 개수를 세어 전체 상태를 판단
+  const badFlags = [
+    sofrChangeUp === true,
+    basisData?.latestValue != null && Math.abs(basisData.latestValue) > 0.1,
+    pdbsData?.changeTotal != null && pdbsData.changeTotal < 0,
+    dealerData?.change != null && dealerData.change > 0,
+    tffData?.change != null && tffData.change < 0,
+  ];
+  const loadedCount = [sofrData, basisData, pdbsData, dealerData, tffData].filter(Boolean).length;
+  const badCount = badFlags.filter(Boolean).length;
+  const signalColor = loadedCount === 0 ? "#9ca3af" : badCount >= 3 ? "#dc2626" : badCount >= 1 ? "#eab308" : "#16a34a";
+  const signalLabel = loadedCount === 0 ? "확인 중" : badCount >= 3 ? "위험 / 스트레스" : badCount >= 1 ? "주의 / 경계" : "정상 / 안정";
 
   const gridStyle = {
     display: "grid",
@@ -285,6 +324,61 @@ export default function Home() {
           interpretation={tffInterpretation}
           interpretationBad={tffChangeUp === false || tffChangeUp === null ? true : false}
         />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginTop: 14 }}>
+        <IndicatorCard
+          number={9}
+          title="Collateral (GCF Repo)"
+          subtitle="GCF 레포 일일 잔액 (담보 시장 유동성 지표, 만기 구간 합계)"
+          loading={triparty.loading}
+          error={triparty.error}
+          latestDateLabel={tripartyData?.latestDate ?? "-"}
+          valueLabel={fmtEokUsdRaw(tripartyData?.latestValue)}
+          changeLabel={fmtEokUsdRawDiff(tripartyData?.change)}
+          changeIsUp={tripartyChangeUp}
+          sparklinePoints={
+            tripartyData?.points?.map((p) => ({
+              date: p.date,
+              y: p.value,
+              label: (p.value / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 0 }),
+            })) ?? []
+          }
+          sparklineColor="#2563eb"
+          interpretation={tripartyInterpretation}
+          interpretationBad={tripartyData?.stale ? true : false}
+        />
+
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 14,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            padding: 16,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>종합 신호등</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: signalColor,
+              }}
+            />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{signalLabel}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.8 }}>
+            <div><span style={{ color: "#16a34a" }}>●</span> 초록: 정상 / 안정</div>
+            <div><span style={{ color: "#eab308" }}>●</span> 노랑: 주의 / 경계</div>
+            <div><span style={{ color: "#dc2626" }}>●</span> 빨강: 위험 / 스트레스</div>
+          </div>
+          <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 10 }}>
+            1~6번 지표 중 경계 신호 개수를 기준으로 자동 계산됩니다.
+          </div>
+        </div>
       </div>
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
