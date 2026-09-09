@@ -1,40 +1,20 @@
 // 데이터 출처: OFR(미국 재무부 산하 금융조사국)이 뉴욕 연준 프라이머리 딜러 통계를
 // 그대로 제공하는 공개 API (data.financialresearch.gov). API 키 불필요.
 //
-// [업그레이드] 지표 정의: "레버리지 배수" = 국채담보 레포 자금조달 총액 ÷ 딜러의 국채 순포지션(보유분) 총액
-//   - 분모가 실제 딜러가 보유 중인 국채 재고(자기 포지션)라서, "보유자금(포지션) 대비
-//     얼마나 빚(레포)을 내서 조달하고 있는지"를 이전 버전(레포÷역레포)보다 더 직접적으로 보여줍니다.
-//   - 딜러 자기자본(net capital)은 SEC에 비공개로 제출되는 자료라 공개 API가 없어서 쓸 수 없었고,
-//     그 다음으로 적절한 분모인 "실제 보유 포지션"을 사용합니다.
-//   - 니모닉(항목 코드) 정확한 이름은 OFR 쪽에서 바뀔 수 있어, 매 요청마다 전체 항목 목록을
-//     실시간으로 조회해서 조건에 맞는 항목을 자동으로 찾습니다 (하드코딩된 이름에 의존하지 않음).
+// 지표 정의: "레버리지 배수" = 국채담보 레포 자금조달 총액 ÷ 국채담보 역레포(자금공여) 총액
+//   - 딜러가 얼마나 많이 빌려서(레포) 포지션을 조달하는지를, 그들이 운용중인 역레포 자금 규모와
+//     비교해 보여주는 프록시(근사) 지표입니다.
+//   - [확인 결과] 딜러의 실제 자기자본(net capital)과 순보유포지션(net position)은 이 무료
+//     공개 API(OFR nypd 데이터셋)에 항목 자체가 없어서 사용할 수 없었습니다. 이 API가 제공하는
+//     항목은 레포/역레포/증권대차/결제실패 뿐이라, 그중 가장 적절한 레포÷역레포 비율을 사용합니다.
+//   - 정확한 항목명(니모닉)은 실제 API 목록(data.financialresearch.gov/v1/metadata/mnemonics?dataset=nypd)에서
+//     아래 값으로 직접 확인했습니다:
+//     NYPD-PD_RP_T_TOT-A  = "Primary Dealer Repurchase Agreements Backed by U.S. Treasury Securities: Total"
+//     NYPD-PD_RRP_T_TOT-A = "Primary Dealer Reverse Repurchase Agreements Backed by U.S. Treasury Securities: Total"
 const TIMESERIES_URL = "https://data.financialresearch.gov/v1/series/timeseries";
-const MNEMONICS_URL = "https://data.financialresearch.gov/v1/metadata/mnemonics?dataset=nypd";
 
-// 혹시 자동 탐색이 실패할 경우를 대비한 고정 후보값 (알려진 명명 규칙 기준)
-const REPO_FALLBACK = ["NYPD-PD_RP_T_TOT-A", "NYPD-PD_RP_TOT-A"];
-const NETPOS_FALLBACK = ["NYPD-PD_NP_UST_TOT-A", "NYPD-PD_NET_UST_TOT-A"];
-
-async function getMnemonicList() {
-  const res = await fetch(MNEMONICS_URL, { cache: "no-store" });
-  if (!res.ok) return [];
-  const list = await res.json();
-  return Array.isArray(list) ? list : [];
-}
-
-// keywordSets를 앞에서부터 시도하면서(더 구체적 -> 덜 구체적) 가장 먼저 매칭되는 항목을 반환
-function discover(list, keywordSets, exclude = []) {
-  for (const keywords of keywordSets) {
-    const match = list.find((item) => {
-      const name = (item.series_name || "").toLowerCase();
-      const hasAll = keywords.every((k) => name.includes(k));
-      const hasExcluded = exclude.some((k) => name.includes(k));
-      return hasAll && !hasExcluded;
-    });
-    if (match) return match.mnemonic;
-  }
-  return null;
-}
+const REPO_MNEMONIC = "NYPD-PD_RP_T_TOT-A";
+const RREPO_MNEMONIC = "NYPD-PD_RRP_T_TOT-A";
 
 async function fetchTimeseries(mnemonic) {
   try {
@@ -47,53 +27,23 @@ async function fetchTimeseries(mnemonic) {
   }
 }
 
-async function fetchWithFallback(discoveredMnemonic, fallbackList) {
-  const candidates = [discoveredMnemonic, ...fallbackList].filter(Boolean);
-  for (const m of candidates) {
-    const series = await fetchTimeseries(m);
-    if (series) return { mnemonic: m, series };
-  }
-  return null;
-}
-
 export async function GET() {
   try {
-    const list = await getMnemonicList();
-
-    const repoMnemonic = discover(
-      list,
-      [
-        ["repo", "treasury", "total"],
-        ["repurchase", "treasury", "total"],
-        ["repo", "total"],
-      ],
-      ["reverse"]
-    );
-
-    const netPosMnemonic = discover(list, [
-      ["net position", "treasury", "total"],
-      ["net position", "treasury"],
-      ["net position"],
+    const [repoSeries, rrepoSeries] = await Promise.all([
+      fetchTimeseries(REPO_MNEMONIC),
+      fetchTimeseries(RREPO_MNEMONIC),
     ]);
 
-    const [repo, netPos] = await Promise.all([
-      fetchWithFallback(repoMnemonic, REPO_FALLBACK),
-      fetchWithFallback(netPosMnemonic, NETPOS_FALLBACK),
-    ]);
-
-    if (!repo || !netPos) {
+    if (!repoSeries || !rrepoSeries) {
       return Response.json(
-        {
-          ok: false,
-          error: "원본 데이터를 가져오지 못했습니다 (NY Fed Primary Dealer 통계).",
-        },
+        { ok: false, error: "원본 데이터를 가져오지 못했습니다 (NY Fed Primary Dealer 통계)." },
         { status: 502 }
       );
     }
 
-    const repoMap = new Map(repo.series.map(([d, v]) => [d, v]));
-    const netPosMap = new Map(netPos.series.map(([d, v]) => [d, v]));
-    const commonDates = repo.series.map(([d]) => d).filter((d) => netPosMap.has(d)).sort();
+    const repoMap = new Map(repoSeries.map(([d, v]) => [d, v]));
+    const rrepoMap = new Map(rrepoSeries.map(([d, v]) => [d, v]));
+    const commonDates = repoSeries.map(([d]) => d).filter((d) => rrepoMap.has(d)).sort();
 
     const lastDates = commonDates.slice(-4);
     if (lastDates.length === 0) {
@@ -102,11 +52,9 @@ export async function GET() {
 
     const points = lastDates.map((d) => {
       const r = repoMap.get(d);
-      const np = netPosMap.get(d);
-      // 딜러가 국채를 순매도(net short) 중이면 포지션이 음수가 될 수 있어 절대값 기준으로 계산하고,
-      // 그 사실은 negativeNetPosition 플래그로 별도 표시합니다.
-      const ratio = np && np !== 0 ? r / Math.abs(np) : null;
-      return { date: d, ratio, negativeNetPosition: np != null && np < 0 };
+      const rr = rrepoMap.get(d);
+      const ratio = rr && rr !== 0 ? r / rr : null;
+      return { date: d, ratio };
     });
 
     const latest = points[points.length - 1];
@@ -119,9 +67,8 @@ export async function GET() {
       latestDate: latest.date,
       latestValue: latest.ratio,
       change,
-      negativeNetPosition: latest.negativeNetPosition,
       points,
-      sourceNote: `NY Fed 프라이머리 딜러 통계 (국채 레포 자금조달 ÷ 국채 순포지션, OFR 경유) - repo:${repo.mnemonic}, netpos:${netPos.mnemonic}`,
+      sourceNote: "NY Fed 프라이머리 딜러 통계 (국채 레포 자금조달 ÷ 국채 역레포, OFR 경유)",
     });
   } catch (e) {
     return Response.json({ ok: false, error: String(e) }, { status: 500 });
