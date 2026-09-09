@@ -148,8 +148,8 @@ export default function Home() {
 
         <IndicatorCard
           number={6}
-          title="CFTC TFF Positioning"
-          subtitle="레버리지드펀드 국채선물 순포지션 (명목가치)"
+          title="CFTC TFF Positioning (10년물)"
+          subtitle="레버리지드펀드 10년물 국채선물 순포지션 (명목가치)"
           loading={tff.loading}
           error={tff.error}
           latestDateLabel={tffData?.latestDate ?? "-"}
