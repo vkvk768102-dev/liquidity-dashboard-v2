@@ -127,7 +127,7 @@ export default function Home() {
         <IndicatorCard
           number={5}
           title="Dealer Financing (자금조달 레버리지)"
-          subtitle="딜러의 자금조달 레버리지 지표 (프록시: 국채 레포 자금조달 ÷ 국채 역레포)"
+          subtitle="딜러의 자금조달 레버리지 지표 (프록시: 국채 레포 자금조달 ÷ 국채 순포지션)"
           loading={dealer.loading}
           error={dealer.error}
           latestDateLabel={dealerData?.latestDate ?? "-"}
@@ -138,7 +138,7 @@ export default function Home() {
             dealerData?.points?.map((p) => ({
               date: p.date,
               y: p.ratio,
-              label: p.ratio != null ? p.ratio.toFixed(1) : "-",
+              label: p.ratio != null ? p.ratio.toFixed(2) : "-",
             })) ?? []
           }
           sparklineColor="#dc2626"
@@ -173,9 +173,8 @@ export default function Home() {
         * 데이터 출처: NY Fed Primary Dealer Statistics, CFTC Traders in Financial Futures
         (둘 다 OFR data.financialresearch.gov 공개 API 경유, 별도 API 키 불필요).
         <br />
-        * &quot;레버리지 배수&quot;는 공식 발표 지표가 아니라 &quot;국채 레포 자금조달 ÷ 국채
-        역레포&quot;로 계산한 프록시(근사) 지표입니다. 딜러의 실제 자기자본(net capital)과
-        순보유포지션은 이 무료 공개 API에는 항목 자체가 없어 사용할 수 없었습니다.
+        * &quot;레버리지 배수&quot;는 공식 발표 지표가 아니라 &quot;국채 레포 자금조달 ÷ 딜러
+        국채 순포지션&quot;으로 계산한 프록시(근사) 지표입니다.
       </p>
     </main>
   );
