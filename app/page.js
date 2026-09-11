@@ -355,6 +355,7 @@ export default function Home() {
         />
 
         <SwapSpreadCard treasury={treasury10y.data} />
+        <TreasuryBasisCard />
 
         <div
           style={{
