@@ -3,7 +3,7 @@ import { priceFromYield, decimalToTicks } from "@/lib/bondMath";
 
 // 재무부 공식 일일 Par Yield Curve (CSV, 무료, 키 불필요)
 const TREASURY_CSV_URL =
-  "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/all/{YEAR}?type=daily_treasury_yield_curve&field_tdr_date_value={YEAR}&page&_format=csv";
+  "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{YEAR}/all?field_tdr_date_value={YEAR}&type=daily_treasury_yield_curve&page&_format=csv";
 
 // 커브 만기 포인트 (연 단위)와 CSV 컬럼 순서
 const CURVE_TENORS = [
@@ -36,6 +36,9 @@ function interpolateYield(row, targetYears) {
     .map((t) => ({ years: t.years, yield: parseFloat(row[t.col]) }))
     .filter((p) => !isNaN(p.yield));
 
+  if (points.length === 0) {
+    throw new Error("재무부 CSV 데이터를 파싱하지 못했습니다 (컬럼명이 바뀌었을 수 있음)");
+  }
   if (targetYears <= points[0].years) return points[0].yield;
   if (targetYears >= points[points.length - 1].years)
     return points[points.length - 1].yield;
