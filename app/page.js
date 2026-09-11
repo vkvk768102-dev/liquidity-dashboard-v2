@@ -78,6 +78,8 @@ export default function Home() {
   const [tff, setTff] = useState(EMPTY);
   const [triparty, setTriparty] = useState(EMPTY);
   const [treasury10y, setTreasury10y] = useState(EMPTY);
+  const [treasuryBasis, setTreasuryBasis] = useState(EMPTY);
+  const [swapSpreadBp, setSwapSpreadBp] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const load = useCallback(async () => {
@@ -88,6 +90,7 @@ export default function Home() {
     setTff((s) => ({ ...s, loading: true, error: null }));
     setTriparty((s) => ({ ...s, loading: true, error: null }));
     setTreasury10y((s) => ({ ...s, loading: true, error: null }));
+    setTreasuryBasis((s) => ({ ...s, loading: true, error: null }));
 
     const jobs = [
       ["repo-rate", setSofr],
@@ -110,8 +113,44 @@ export default function Home() {
       })
     );
 
+    try {
+      const savedConfig = (() => {
+        try {
+          const raw = localStorage.getItem("treasury-basis-ctd-config");
+          return raw
+            ? JSON.parse(raw)
+            : { ctdCoupon: "4.5", ctdMaturity: "2033-08-31", cf: "0.9202", futuresSymbol: "ZN=F" };
+        } catch {
+          return { ctdCoupon: "4.5", ctdMaturity: "2033-08-31", cf: "0.9202", futuresSymbol: "ZN=F" };
+        }
+      })();
+      const qs = new URLSearchParams(savedConfig).toString();
+      const tb = await fetchJson(`/api/treasury-basis?${qs}`);
+      setTreasuryBasis({ loading: false, error: null, data: tb });
+    } catch (e) {
+      setTreasuryBasis({ loading: false, error: e.message, data: null });
+    }
+
     setLastRefreshed(new Date());
   }, []);
+
+  useEffect(() => {
+    if (!treasury10y.data) return;
+    try {
+      const raw = localStorage.getItem("swapSpread10Y");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const h = parsed.history ?? [];
+      if (!h.length) return;
+      const latestSwap = h[h.length - 1].swapRate;
+      const treasuryValue = treasury10y.data.latestValue;
+      if (latestSwap != null && treasuryValue != null) {
+        setSwapSpreadBp((latestSwap - treasuryValue) * 100);
+      }
+    } catch {
+      // ignore
+    }
+  }, [treasury10y.data]);
 
   useEffect(() => {
     load();
@@ -181,14 +220,23 @@ export default function Home() {
     : "";
 
   // 종합 신호등: 로딩된 지표 중 경계(빨강) 신호 개수를 세어 전체 상태를 판단
+  const treasuryBasisData = treasuryBasis.data;
+  const treasuryBasisBad =
+    treasuryBasisData?.grossBasis != null && Math.abs(treasuryBasisData.grossBasis) > 0.25;
+
   const badFlags = [
     sofrChangeUp === true,
     basisData?.latestValue != null && Math.abs(basisData.latestValue) > 0.1,
     pdbsData?.changeTotal != null && pdbsData.changeTotal < 0,
     dealerData?.change != null && dealerData.change > 0,
     tffData?.change != null && tffData.change < 0,
+    tripartyData?.stale === true,
+    treasuryBasisBad,
+    swapSpreadBp != null && swapSpreadBp < 0,
   ];
-  const loadedCount = [sofrData, basisData, pdbsData, dealerData, tffData].filter(Boolean).length;
+  const loadedCount =
+    [sofrData, basisData, pdbsData, dealerData, tffData, tripartyData, treasuryBasisData].filter(Boolean).length +
+    (swapSpreadBp != null ? 1 : 0);
   const badCount = badFlags.filter(Boolean).length;
   const signalColor = loadedCount === 0 ? "#9ca3af" : badCount >= 3 ? "#dc2626" : badCount >= 1 ? "#eab308" : "#16a34a";
   const signalLabel = loadedCount === 0 ? "확인 중" : badCount >= 3 ? "위험 / 스트레스" : badCount >= 1 ? "주의 / 경계" : "정상 / 안정";
@@ -384,7 +432,7 @@ export default function Home() {
             <div><span style={{ color: "#dc2626" }}>●</span> 빨강: 위험 / 스트레스</div>
           </div>
           <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 10 }}>
-            1~6번 지표 중 경계 신호 개수를 기준으로 자동 계산됩니다.
+            1~9번 지표와 Swap Spread를 포함한 전체 경계 신호 개수를 기준으로 자동 계산됩니다.
           </div>
         </div>
       </div>
