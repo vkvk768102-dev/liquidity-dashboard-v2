@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import IndicatorCard from "./components/IndicatorCard";
 import SwapSpreadCard from "./components/SwapSpreadCard";
+import TreasuryBasisCard from "./components/TreasuryBasisCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
