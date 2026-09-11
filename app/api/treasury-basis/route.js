@@ -24,9 +24,10 @@ const CURVE_TENORS = [
 function parseCsv(text) {
   const lines = text.trim().split("\n");
   const header = lines[0].split(",").map((h) => h.replace(/"/g, "").trim());
-  const lastRow = lines[lines.length - 1].split(",").map((v) => v.replace(/"/g, "").trim());
+  // 재무부 CSV는 최신 날짜가 맨 위(헤더 바로 다음 줄)에 옵니다.
+  const firstDataRow = lines[1].split(",").map((v) => v.replace(/"/g, "").trim());
   const row = {};
-  header.forEach((h, i) => (row[h] = lastRow[i]));
+  header.forEach((h, i) => (row[h] = firstDataRow[i]));
   return row;
 }
 
