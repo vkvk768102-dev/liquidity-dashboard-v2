@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import IndicatorCard from "./components/IndicatorCard";
+import SwapSpreadCard from "./components/SwapSpreadCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -75,6 +76,7 @@ export default function Home() {
   const [dealer, setDealer] = useState(EMPTY);
   const [tff, setTff] = useState(EMPTY);
   const [triparty, setTriparty] = useState(EMPTY);
+  const [treasury10y, setTreasury10y] = useState(EMPTY);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const load = useCallback(async () => {
@@ -84,6 +86,7 @@ export default function Home() {
     setDealer((s) => ({ ...s, loading: true, error: null }));
     setTff((s) => ({ ...s, loading: true, error: null }));
     setTriparty((s) => ({ ...s, loading: true, error: null }));
+    setTreasury10y((s) => ({ ...s, loading: true, error: null }));
 
     const jobs = [
       ["repo-rate", setSofr],
@@ -92,6 +95,7 @@ export default function Home() {
       ["dealer-financing", setDealer],
       ["cftc-tff", setTff],
       ["tri-party-volume", setTriparty],
+      ["treasury-10y", setTreasury10y],
     ];
 
     await Promise.all(
@@ -326,7 +330,7 @@ export default function Home() {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginTop: 14 }}>
+      <div style={{ ...gridStyle, marginTop: 14 }}>
         <IndicatorCard
           number={9}
           title="Collateral (GCF Repo)"
@@ -348,6 +352,8 @@ export default function Home() {
           interpretation={tripartyInterpretation}
           interpretationBad={tripartyData?.stale ? true : false}
         />
+
+        <SwapSpreadCard treasury={treasury10y.data} />
 
         <div
           style={{
@@ -383,10 +389,12 @@ export default function Home() {
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
         * 데이터 출처: NY Fed 공식 Markets Data API (SOFR/TGCR 금리, Primary Dealer 통계),
-        CFTC 공식 API (publicreporting.cftc.gov). 별도 API 키 불필요.
+        CFTC 공식 API (publicreporting.cftc.gov), 미국 재무부 공식 일별 금리 CSV. 별도 API 키 불필요.
         <br />
         * &quot;레버리지 배수&quot;와 &quot;프라이머리 딜러 총자산&quot;은 공식 발표 지표가
         아니라 공개 데이터를 조합해 계산한 프록시(근사) 지표입니다.
+        <br />
+        * &quot;Swap Spread&quot;의 스왑금리는 무료 자동 소스가 없어 수동 입력값을 사용합니다 (브라우저에 저장, 기기별로 별도 보관).
       </p>
     </main>
   );
