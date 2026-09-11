@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import IndicatorCard from "./components/IndicatorCard";
 import SwapSpreadCard from "./components/SwapSpreadCard";
 import TreasuryBasisCard from "./components/TreasuryBasisCard";
+import TreasuryAuctionTailCard from "./components/TreasuryAuctionTailCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -35,7 +36,7 @@ function fmtPctPDiff(v) {
 }
 function fmtEokFromMillions(millions) {
   if (millions == null) return "-";
-  const eok = millions / 100; // 백만달러 -> 억달러
+  const eok = millions / 100;
   const sign = eok >= 0 ? "" : "-";
   return `${sign}${Math.abs(eok).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억 달러`;
 }
@@ -80,6 +81,8 @@ export default function Home() {
   const [treasury10y, setTreasury10y] = useState(EMPTY);
   const [treasuryBasis, setTreasuryBasis] = useState(EMPTY);
   const [swapSpreadBp, setSwapSpreadBp] = useState(null);
+  const [auctionTailLoaded, setAuctionTailLoaded] = useState(false);
+  const [auctionTailBad, setAuctionTailBad] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const load = useCallback(async () => {
@@ -152,6 +155,34 @@ export default function Home() {
     }
   }, [treasury10y.data]);
 
+  // Treasury Auction Tail (20Y/30Y) 수동 입력값을 읽어서 경계 신호에 반영
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("treasuryAuctionTail");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const tenors = ["20Y", "30Y"];
+      const latestVals = [];
+      const prevVals = [];
+      tenors.forEach((key) => {
+        const list = parsed[key] ?? [];
+        if (list.length) latestVals.push(list[list.length - 1].tailBp);
+        if (list.length > 1) prevVals.push(list[list.length - 2].tailBp);
+      });
+      if (!latestVals.length) return;
+      setAuctionTailLoaded(true);
+      const latestAvg = latestVals.reduce((a, b) => a + b, 0) / latestVals.length;
+      if (prevVals.length) {
+        const prevAvg = prevVals.reduce((a, b) => a + b, 0) / prevVals.length;
+        setAuctionTailBad(latestAvg > prevAvg);
+      } else {
+        setAuctionTailBad(latestAvg >= 2);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     load();
     const id = setInterval(load, 60 * 60 * 1000);
@@ -219,7 +250,6 @@ export default function Home() {
       : "잔액 소폭 감소. 담보 시장 유동성 흐름 참고용"
     : "";
 
-  // 종합 신호등: 로딩된 지표 중 경계(빨강) 신호 개수를 세어 전체 상태를 판단
   const treasuryBasisData = treasuryBasis.data;
   const treasuryBasisBad =
     treasuryBasisData?.grossBasis != null && Math.abs(treasuryBasisData.grossBasis) > 0.25;
@@ -233,10 +263,12 @@ export default function Home() {
     tripartyData?.stale === true,
     treasuryBasisBad,
     swapSpreadBp != null && swapSpreadBp < 0,
+    auctionTailLoaded && auctionTailBad,
   ];
   const loadedCount =
     [sofrData, basisData, pdbsData, dealerData, tffData, tripartyData, treasuryBasisData].filter(Boolean).length +
-    (swapSpreadBp != null ? 1 : 0);
+    (swapSpreadBp != null ? 1 : 0) +
+    (auctionTailLoaded ? 1 : 0);
   const badCount = badFlags.filter(Boolean).length;
   const signalColor = loadedCount === 0 ? "#9ca3af" : badCount >= 3 ? "#dc2626" : badCount >= 1 ? "#eab308" : "#16a34a";
   const signalLabel = loadedCount === 0 ? "확인 중" : badCount >= 3 ? "위험 / 스트레스" : badCount >= 1 ? "주의 / 경계" : "정상 / 안정";
@@ -404,6 +436,7 @@ export default function Home() {
 
         <SwapSpreadCard treasury={treasury10y.data} />
         <TreasuryBasisCard />
+        <TreasuryAuctionTailCard />
 
         <div
           style={{
@@ -432,7 +465,7 @@ export default function Home() {
             <div><span style={{ color: "#dc2626" }}>●</span> 빨강: 위험 / 스트레스</div>
           </div>
           <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 10 }}>
-            1~9번 지표와 Swap Spread를 포함한 전체 경계 신호 개수를 기준으로 자동 계산됩니다.
+            1~9번 지표와 Swap Spread, Treasury Auction Tail을 포함한 전체 경계 신호 개수를 기준으로 자동 계산됩니다.
           </div>
         </div>
       </div>
@@ -444,7 +477,7 @@ export default function Home() {
         * &quot;레버리지 배수&quot;와 &quot;프라이머리 딜러 총자산&quot;은 공식 발표 지표가
         아니라 공개 데이터를 조합해 계산한 프록시(근사) 지표입니다.
         <br />
-        * &quot;Swap Spread&quot;의 스왑금리는 무료 자동 소스가 없어 수동 입력값을 사용합니다 (브라우저에 저장, 기기별로 별도 보관).
+        * &quot;Swap Spread&quot;의 스왑금리와 &quot;Treasury Auction Tail&quot;은 무료 자동 소스가 없어 수동 입력값을 사용합니다 (브라우저에 저장, 기기별로 별도 보관).
       </p>
     </main>
   );
