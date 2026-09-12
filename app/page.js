@@ -80,9 +80,8 @@ export default function Home() {
   const [triparty, setTriparty] = useState(EMPTY);
   const [treasury10y, setTreasury10y] = useState(EMPTY);
   const [treasuryBasis, setTreasuryBasis] = useState(EMPTY);
+  const [auctionTail, setAuctionTail] = useState(EMPTY);
   const [swapSpreadBp, setSwapSpreadBp] = useState(null);
-  const [auctionTailLoaded, setAuctionTailLoaded] = useState(false);
-  const [auctionTailBad, setAuctionTailBad] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const load = useCallback(async () => {
@@ -94,6 +93,7 @@ export default function Home() {
     setTriparty((s) => ({ ...s, loading: true, error: null }));
     setTreasury10y((s) => ({ ...s, loading: true, error: null }));
     setTreasuryBasis((s) => ({ ...s, loading: true, error: null }));
+    setAuctionTail((s) => ({ ...s, loading: true, error: null }));
 
     const jobs = [
       ["repo-rate", setSofr],
@@ -103,6 +103,7 @@ export default function Home() {
       ["cftc-tff", setTff],
       ["tri-party-volume", setTriparty],
       ["treasury-10y", setTreasury10y],
+      ["treasury-auction-tail", setAuctionTail],
     ];
 
     await Promise.all(
@@ -154,34 +155,6 @@ export default function Home() {
       // ignore
     }
   }, [treasury10y.data]);
-
-  // Treasury Auction Tail (20Y/30Y) 수동 입력값을 읽어서 경계 신호에 반영
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("treasuryAuctionTail");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const tenors = ["20Y", "30Y"];
-      const latestVals = [];
-      const prevVals = [];
-      tenors.forEach((key) => {
-        const list = parsed[key] ?? [];
-        if (list.length) latestVals.push(list[list.length - 1].tailBp);
-        if (list.length > 1) prevVals.push(list[list.length - 2].tailBp);
-      });
-      if (!latestVals.length) return;
-      setAuctionTailLoaded(true);
-      const latestAvg = latestVals.reduce((a, b) => a + b, 0) / latestVals.length;
-      if (prevVals.length) {
-        const prevAvg = prevVals.reduce((a, b) => a + b, 0) / prevVals.length;
-        setAuctionTailBad(latestAvg > prevAvg);
-      } else {
-        setAuctionTailBad(latestAvg >= 2);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
 
   useEffect(() => {
     load();
@@ -253,6 +226,26 @@ export default function Home() {
   const treasuryBasisData = treasuryBasis.data;
   const treasuryBasisBad =
     treasuryBasisData?.grossBasis != null && Math.abs(treasuryBasisData.grossBasis) > 0.25;
+
+  // Treasury Auction Tail (20Y/30Y): helious.io에서 자동으로 받아온 값으로 경계 신호 계산
+  const auctionTailData = auctionTail.data;
+  const auctionTailLatestVals = auctionTailData
+    ? ["20Y", "30Y"].map((k) => auctionTailData[k]?.latest?.tailBp).filter((v) => v != null)
+    : [];
+  const auctionTailPrevVals = auctionTailData
+    ? ["20Y", "30Y"].map((k) => auctionTailData[k]?.prev?.tailBp).filter((v) => v != null)
+    : [];
+  const auctionTailLoaded = auctionTailLatestVals.length > 0;
+  let auctionTailBad = false;
+  if (auctionTailLoaded) {
+    const latestAvg = auctionTailLatestVals.reduce((a, b) => a + b, 0) / auctionTailLatestVals.length;
+    if (auctionTailPrevVals.length) {
+      const prevAvg = auctionTailPrevVals.reduce((a, b) => a + b, 0) / auctionTailPrevVals.length;
+      auctionTailBad = latestAvg > prevAvg;
+    } else {
+      auctionTailBad = latestAvg >= 2;
+    }
+  }
 
   const badFlags = [
     sofrChangeUp === true,
@@ -472,12 +465,12 @@ export default function Home() {
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
         * 데이터 출처: NY Fed 공식 Markets Data API (SOFR/TGCR 금리, Primary Dealer 통계),
-        CFTC 공식 API (publicreporting.cftc.gov), 미국 재무부 공식 일별 금리 CSV. 별도 API 키 불필요.
+        CFTC 공식 API (publicreporting.cftc.gov), 미국 재무부 공식 일별 금리 CSV, helious.io (국채 경매 테일, 무료). 별도 API 키 불필요.
         <br />
         * &quot;레버리지 배수&quot;와 &quot;프라이머리 딜러 총자산&quot;은 공식 발표 지표가
         아니라 공개 데이터를 조합해 계산한 프록시(근사) 지표입니다.
         <br />
-        * &quot;Swap Spread&quot;의 스왑금리와 &quot;Treasury Auction Tail&quot;은 무료 자동 소스가 없어 수동 입력값을 사용합니다 (브라우저에 저장, 기기별로 별도 보관).
+        * &quot;Swap Spread&quot;의 스왑금리는 무료 자동 소스가 없어 수동 입력값을 사용합니다 (브라우저에 저장, 기기별로 별도 보관).
       </p>
     </main>
   );
