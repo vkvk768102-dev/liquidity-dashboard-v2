@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import IndicatorCard from "./IndicatorCard";
 
-// 기준 (bp = 0.01%p). 공식 기준이 아니라 경험칙입니다.
-const WARN_BP = 5; // IORB보다 5bp 이상 높으면 "주의"
-const STRESS_BP = 10; // 10bp 이상이면 "경색" (상시 레포 금리 = IORB + 10bp 가정)
+// bp = 0.01%p. "경색" 기준은 연준 천장(상시 레포 금리)과 IORB의 간격으로 자동 계산되고,
+// "주의" 기준은 그 절반입니다(공식 기준이 아니라 경험칙). 간격을 못 받으면 10bp로 계산합니다.
+const DEFAULT_GAP_BP = 10;
 
 function fmtBp(v) {
   if (v == null) return "-";
@@ -50,17 +50,22 @@ export default function SofrIorbCard() {
   const prevSpread = d?.points && d.points.length > 1 ? d.points[d.points.length - 2].value : null;
   const changeUp = d?.change != null ? d.change > 0 : null;
 
+  const stressBp = d?.gapBp ?? DEFAULT_GAP_BP;
+  const warnBp = Math.max(1, Math.round(stressBp / 2));
+
   let interpretation = "";
   let bad = false;
   if (d && spread != null) {
     const tgcrPart = d.tgcr != null ? ` · TGCR ${d.tgcr.toFixed(2)}% ${fmtBp(d.tgcrBp)}` : "";
-    const rates = `(SOFR ${d.sofr.toFixed(2)}% ${fmtBp(d.sofrBp)}${tgcrPart} · IORB ${d.iorb.toFixed(2)}%)`;
-    if (spread >= STRESS_BP) {
+    const ceilPart =
+      d.ceiling != null ? ` · 천장(${d.ceilingSource || "상시 레포"}) ${d.ceiling.toFixed(2)}%` : "";
+    const rates = `(SOFR ${d.sofr.toFixed(2)}% ${fmtBp(d.sofrBp)}${tgcrPart} · IORB ${d.iorb.toFixed(2)}%${ceilPart})`;
+    if (spread >= stressBp) {
       interpretation = `경색 수준. 연준 천장 금리(상시 레포) 부근까지 상승 ${rates}`;
       bad = true;
-    } else if (spread >= WARN_BP) {
+    } else if (spread >= warnBp) {
       interpretation =
-        prevSpread != null && prevSpread >= WARN_BP
+        prevSpread != null && prevSpread >= warnBp
           ? `주의. IORB 위 상승이 이틀 이상 이어짐 ${rates}`
           : `주의. IORB 위로 상승 (하루 튐일 수 있음: 월말·국채 결제일 확인) ${rates}`;
       bad = true;
@@ -75,7 +80,7 @@ export default function SofrIorbCard() {
     <IndicatorCard
       number={12}
       title="SOFR·TGCR − IORB (연준 정책금리 대비)"
-      subtitle="SOFR과 TGCR 중 더 높은 쪽이 연준 지급금리(IORB)보다 얼마나 높은지. 0 이하면 정상, 위로 벌어질수록 자금 압박 (상시 레포 금리는 IORB+10bp로 가정)"
+      subtitle="SOFR과 TGCR 중 더 높은 쪽이 연준 지급금리(IORB)보다 얼마나 높은지. 0 이하면 정상, 위로 벌어질수록 자금 압박. 경색 기준은 연준 상시 레포 금리와 IORB의 간격으로 자동 계산"
       loading={state.loading}
       error={state.error}
       latestDateLabel={d?.latestDate ?? "-"}
