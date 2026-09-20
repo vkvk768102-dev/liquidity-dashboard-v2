@@ -6,6 +6,7 @@ import SwapSpreadCard from "./components/SwapSpreadCard";
 import TreasuryBasisCard from "./components/TreasuryBasisCard";
 import TreasuryAuctionTailCard from "./components/TreasuryAuctionTailCard";
 import DealerTreasuryCard from "./components/DealerTreasuryCard";
+import DealerRepoTermCard from "./components/DealerRepoTermCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -432,6 +433,7 @@ export default function Home() {
         <TreasuryBasisCard />
         <TreasuryAuctionTailCard />
         <DealerTreasuryCard />
+        <DealerRepoTermCard />
 
         <div
           style={{
