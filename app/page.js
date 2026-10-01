@@ -8,6 +8,7 @@ import TreasuryAuctionTailCard from "./components/TreasuryAuctionTailCard";
 import DealerTreasuryCard from "./components/DealerTreasuryCard";
 import DealerRepoTermCard from "./components/DealerRepoTermCard";
 import SofrIorbCard from "./components/SofrIorbCard";
+import SecLendingCard from "./components/SecLendingCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -436,6 +437,7 @@ export default function Home() {
         <DealerTreasuryCard />
         <DealerRepoTermCard />
         <SofrIorbCard />
+        <SecLendingCard />
 
 
         <div
@@ -472,7 +474,7 @@ export default function Home() {
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
         * 데이터 출처: NY Fed 공식 Markets Data API (SOFR/TGCR 금리, Primary Dealer 통계),
-        CFTC 공식 API (publicreporting.cftc.gov), 미국 재무부 공식 일별 금리 CSV, helious.io (국채 경매 테일, 무료). 별도 API 키 불필요.
+        CFTC 공식 API (publicreporting.cftc.gov), NY Fed 증권대차(Securities Lending) 결과, 미국 재무부 공식 일별 금리 CSV, helious.io (국채 경매 테일, 무료). 별도 API 키 불필요.
         <br />
         * &quot;레버리지 배수&quot;와 &quot;프라이머리 딜러 총자산&quot;은 공식 발표 지표가
         아니라 공개 데이터를 조합해 계산한 프록시(근사) 지표입니다.

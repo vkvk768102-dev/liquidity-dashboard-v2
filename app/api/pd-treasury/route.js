@@ -5,14 +5,16 @@
 const BASE = "https://markets.newyorkfed.org/api/pd/get/asof";
 const UST_KEY = "PDPOSGST-TOT";
 
+// 수정: 요일 판단과 날짜 문자열을 모두 UTC 기준으로 통일
+// (예전 코드는 한국 오전 9시 이전에 수요일 대신 화요일 날짜로 요청하는 문제가 있었음)
 function lastWednesdays(count) {
   const dates = [];
   const d = new Date();
   while (dates.length < count) {
-    if (d.getDay() === 3) dates.push(new Date(d));
-    d.setDate(d.getDate() - 1);
+    if (d.getUTCDay() === 3) dates.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() - 1);
   }
-  return dates.map((dt) => dt.toISOString().slice(0, 10));
+  return dates;
 }
 
 function extractValue(json, keyid) {

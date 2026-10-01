@@ -10,17 +10,17 @@ const BASE = "https://markets.newyorkfed.org/api/pd/get/asof";
 const REPO_KEY = "PDSORA-UTSETTOT"; // 국채담보 레포 자금조달, 총액
 const NETPOS_KEY = "PDPOSGST-TOT"; // 국채(TIPS 제외) 순포지션, 총액
 
+// 수정: 요일 판단과 날짜 문자열을 모두 UTC 기준으로 통일
+// (예전 코드는 한국 오전 9시 이전에 수요일 대신 화요일 날짜로 요청하는 문제가 있었음)
 function lastWednesdays(count) {
   const dates = [];
   const d = new Date();
   // 오늘부터 거슬러 올라가며 수요일(주간 서베이 기준일) 날짜를 count개 만큼 구함
   while (dates.length < count) {
-    if (d.getDay() === 3) {
-      dates.push(new Date(d));
-    }
-    d.setDate(d.getDate() - 1);
+    if (d.getUTCDay() === 3) dates.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() - 1);
   }
-  return dates.map((dt) => dt.toISOString().slice(0, 10));
+  return dates;
 }
 
 function extractValue(json, keyid) {
