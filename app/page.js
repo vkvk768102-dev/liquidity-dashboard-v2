@@ -9,6 +9,7 @@ import DealerTreasuryCard from "./components/DealerTreasuryCard";
 import DealerRepoTermCard from "./components/DealerRepoTermCard";
 import SofrIorbCard from "./components/SofrIorbCard";
 import SecLendingCard from "./components/SecLendingCard";
+import PdBalanceSheetCard from "./components/PdBalanceSheetCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -337,26 +338,10 @@ export default function Home() {
           interpretationBad={basisData?.latestValue != null && Math.abs(basisData.latestValue) > 0.1}
         />
 
-        <IndicatorCard
-          number={4}
-          title="Primary Dealer Balance Sheet"
-          subtitle="프라이머리 딜러(증권사) 보유 자산 (근사치, 국채 포함 5개 자산군 합계)"
+        <PdBalanceSheetCard
           loading={pdbs.loading}
           error={pdbs.error}
-          latestDateLabel={pdbsData?.latestDate ?? "-"}
-          valueLabel={fmtEokFromMillions(pdbsData?.latestTotal)}
-          changeLabel={fmtEokFromMillionsDiff(pdbsData?.changeTotal)}
-          changeIsUp={pdbsChangeUp}
-          sparklinePoints={
-            pdbsData?.points
-              ?.filter((p) => p.total != null)
-              .map((p) => ({
-                date: p.date,
-                y: p.total,
-                label: (p.total / 100).toLocaleString("ko-KR", { maximumFractionDigits: 0 }),
-              })) ?? []
-          }
-          sparklineColor="#2563eb"
+          data={pdbsData}
           interpretation={pdbsInterp}
           interpretationBad={pdbsChangeUp === false}
         />
