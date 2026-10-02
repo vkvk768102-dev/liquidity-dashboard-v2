@@ -54,6 +54,17 @@ function TrendTable({ item }) {
           </thead>
           <tbody>
             <tr>
+              <td style={{ ...td, textAlign: "left", color: "#6b7280" }}>신청</td>
+              {item.history.map((h) => {
+                const short = h.submitted > h.accepted;
+                return (
+                  <td key={h.date} style={{ ...td, color: short ? "#dc2626" : undefined, fontWeight: short ? 700 : 400 }}>
+                    {h.submitted > 0 ? (h.submitted / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : "-"}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr>
               <td style={{ ...td, textAlign: "left", color: "#6b7280" }}>배정</td>
               {item.history.map((h) => (
                 <td key={h.date} style={td}>
@@ -229,11 +240,14 @@ export default function SecLendingCard() {
             {data.tracked?.length > 0 && data.tracked[0].history.length > 1 && (
               <div>
                 <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 6 }}>
-                  주목 종목 최근 추이 (배정 단위: 억 달러, 수수료 단위: %)
+                  주목 종목 최근 추이 (신청·배정: 억 달러, 수수료: %)
                 </div>
                 {data.tracked.map((item) => (
                   <TrendTable key={item.cusip} item={item} />
                 ))}
+                <div style={{ fontSize: 10.5, color: "#9ca3af" }}>
+                  신청이 빨간색인 날은 신청보다 적게 배정된 날(못 빌린 수요가 있었던 날)이에요.
+                </div>
               </div>
             )}
 
