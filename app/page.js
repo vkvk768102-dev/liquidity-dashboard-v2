@@ -10,6 +10,7 @@ import DealerRepoTermCard from "./components/DealerRepoTermCard";
 import SofrIorbCard from "./components/SofrIorbCard";
 import SecLendingCard from "./components/SecLendingCard";
 import PdBalanceSheetCard from "./components/PdBalanceSheetCard";
+import CftcTreasuryCard from "./components/CftcTreasuryCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -423,6 +424,7 @@ export default function Home() {
         <DealerRepoTermCard />
         <SofrIorbCard />
         <SecLendingCard />
+        <CftcTreasuryCard />
 
 
         <div
