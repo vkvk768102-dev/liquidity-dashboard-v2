@@ -13,6 +13,67 @@ function fmtRate(v) {
   return v == null ? "-" : `${v.toFixed(3)}%`;
 }
 
+function fmtMD(d) {
+  if (!d) return "";
+  const [, m, day] = d.split("-");
+  return `${Number(m)}/${Number(day)}`;
+}
+
+// 끝에서부터 수수료가 연속으로 오른 날 수
+function risingStreak(history) {
+  const rates = history.map((h) => h.rate).filter((r) => r != null);
+  let n = 0;
+  for (let i = rates.length - 1; i > 0; i--) {
+    if (rates[i] > rates[i - 1]) n += 1;
+    else break;
+  }
+  return n;
+}
+
+function TrendTable({ item }) {
+  const streak = risingStreak(item.history);
+  const th = { padding: "4px 6px", fontWeight: 500, color: "#6b7280", textAlign: "right", whiteSpace: "nowrap" };
+  const td = { padding: "4px 6px", textAlign: "right", whiteSpace: "nowrap", borderTop: "1px solid #f3f4f6" };
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 12, fontWeight: 600 }}>
+        {item.description} <span style={{ color: "#9ca3af", fontWeight: 400 }}>{item.cusip}</span>
+      </div>
+      {streak >= 2 && (
+        <div style={{ fontSize: 11.5, color: "#dc2626", fontWeight: 600 }}>수수료 {streak}일 연속 상승</div>
+      )}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: "left" }}></th>
+              {item.history.map((h) => (
+                <th key={h.date} style={th}>{fmtMD(h.date)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ ...td, textAlign: "left", color: "#6b7280" }}>배정</td>
+              {item.history.map((h) => (
+                <td key={h.date} style={td}>
+                  {h.accepted > 0 ? (h.accepted / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : "-"}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td style={{ ...td, textAlign: "left", color: "#6b7280" }}>수수료</td>
+              {item.history.map((h) => (
+                <td key={h.date} style={{ ...td, fontWeight: 700 }}>{h.rate != null ? h.rate.toFixed(3) : "-"}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function SecLendingCard() {
   const [state, setState] = useState({ loading: true, error: null, data: null });
 
@@ -162,6 +223,17 @@ export default function SecLendingCard() {
                 <span style={{ fontWeight: 600 }}>물량 최대: </span>
                 {data.biggest.description} ({data.biggest.cusip}) {fmtEok(data.biggest.accepted)}, 수수료{" "}
                 {fmtRate(data.biggest.rate)}
+              </div>
+            )}
+
+            {data.tracked?.length > 0 && data.tracked[0].history.length > 1 && (
+              <div>
+                <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 6 }}>
+                  주목 종목 최근 추이 (배정 단위: 억 달러, 수수료 단위: %)
+                </div>
+                {data.tracked.map((item) => (
+                  <TrendTable key={item.cusip} item={item} />
+                ))}
               </div>
             )}
 
