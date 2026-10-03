@@ -1,0 +1,233 @@
+// 미국 재무부 FedInvest 일일 국채 가격 (종목별 실제 종가, 무료, 키 불필요)
+// https://www.treasurydirect.gov/GA-FI/FedInvest/selectSecurityPriceDate.htm
+// 반환: [{ cusip, type, coupon, maturity("YYYY-MM-DD"), price(종가, 액면 100 기준) }]
+
+const URL = "https://www.treasurydirect.gov/GA-FI/FedInvest/selectSecurityPriceDate";
+
+function toIso(mdy) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(mdy).trim());
+  if (!m) return null;
+  return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+}
+
+function parseRows(cells) {
+  const out = [];
+  for (const c of cells) {
+    if (c.length < 8) continue;
+    const cusip = c[0].trim();
+    if (!/^[0-9A-Z]{9}$/.test(cusip)) continue;
+    const type = c[1].trim().toUpperCase();
+    const coupon = parseFloat(String(c[2]).replace("%", ""));
+    const maturity = toIso(c[3]);
+    const eod = parseFloat(c[7]);
+    const buy = parseFloat(c[5]);
+    const sell = parseFloat(c[6]);
+    const price = eod > 0 ? eod : buy > 0 && sell > 0 ? (buy + sell) / 2 : NaN;
+    if (!maturity || !Number.isFinite(coupon) || !Number.isFinite(price) || price <= 0) continue;
+    out.push({ cusip, type, coupon, maturity, price });
+  }
+  return out;
+}
+
+// 사이트 양식 이름이 시기마다 달라서 여러 방식을 차례로 시도
+function variants(y, m, d) {
+  return [
+    { priceDateDay: String(Number(d)), priceDateMonth: String(Number(m)), priceDateYear: y, fileType: "csv", csv: "CSV FORMAT" },
+    { "priceDate.month": String(Number(m)), "priceDate.day": String(Number(d)), "priceDate.year": y, submit: "CSV Format" },
+    { priceDateDay: String(Number(d)), priceDateMonth: String(Number(m)), priceDateYear: y, submit: "Show Prices" },
+    { "priceDate.month": String(Number(m)), "priceDate.day": String(Number(d)), "priceDate.year": y, submit: "Show Prices" },
+  ];
+}
+
+function parseText(text) {
+  if (!/<table/i.test(text)) {
+    const cells = text
+      .trim()
+      .split(/\r?\n/)
+      .map((l) => l.split(",").map((x) => x.replace(/"/g, "")));
+    return parseRows(cells);
+  }
+  const rows = [...text.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((r) =>
+    [...r[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) =>
+      c[1].replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim()
+    )
+  );
+  return parseRows(rows);
+}
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
+
+// 1단계: 사람처럼 먼저 양식 페이지를 열어 쿠키·보안 토큰·입력칸 이름을 읽어옴
+let sessionPromise = null;
+let sessionTime = 0;
+
+function cookiesFrom(res) {
+  const list = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [res.headers.get("set-cookie")];
+  return list
+    .filter(Boolean)
+    .flatMap((c) => c.split(/,(?=\s*[A-Za-z0-9_\-]+=)/))
+    .map((c) => c.split(";")[0].trim())
+    .filter(Boolean)
+    .join("; ");
+}
+
+function parseForm(html, pageUrl) {
+  const forms = [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)];
+  const form = forms.find((f) => /day|month|year|price/i.test(f[2])) ?? forms[0];
+  if (!form) return null;
+  const actionAttr = /action\s*=\s*"([^"]*)"/i.exec(form[1])?.[1] ?? "";
+  const action = actionAttr ? new globalThis.URL(actionAttr.replace(/&amp;/g, "&"), pageUrl).toString() : pageUrl;
+  const fields = [];
+  for (const m of form[2].matchAll(/<(input|select|button)\b([^>]*)>/gi)) {
+    const attrs = m[2];
+    const name = /name\s*=\s*"([^"]+)"/i.exec(attrs)?.[1];
+    if (!name) continue;
+    const type = (/type\s*=\s*"([^"]+)"/i.exec(attrs)?.[1] ?? (m[1].toLowerCase() === "select" ? "select" : "text")).toLowerCase();
+    const value = (/value\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? "").replace(/&amp;/g, "&");
+    fields.push({ tag: m[1].toLowerCase(), name, type, value });
+  }
+  return { action, fields };
+}
+
+async function getSession() {
+  if (sessionPromise && Date.now() - sessionTime < 10 * 60 * 1000) return sessionPromise;
+  sessionTime = Date.now();
+  sessionPromise = (async () => {
+    for (const pageUrl of [URL, `${URL}.htm`]) {
+      try {
+        const res = await fetch(pageUrl, { headers: { "User-Agent": UA, Accept: "text/html" }, cache: "no-store" });
+        const html = await res.text();
+        const form = parseForm(html, pageUrl);
+        if (form && form.fields.length) return { ok: true, pageUrl, status: res.status, cookie: cookiesFrom(res), ...form };
+      } catch {
+        // 다음 주소 시도
+      }
+    }
+    return { ok: false };
+  })();
+  return sessionPromise;
+}
+
+// 양식 입력칸 이름에 맞춰 날짜·토큰·CSV 버튼을 채움
+function buildBody(session, y, m, d) {
+  const body = {};
+  const submits = [];
+  for (const f of session.fields) {
+    const n = f.name.toLowerCase();
+    if (f.type === "submit" || f.tag === "button") {
+      submits.push(f);
+      continue;
+    }
+    if (/date/.test(n) && !/day|month|year/.test(n)) {
+      // 날짜 한 칸짜리 입력 (예: priceDate=2026-10-02). 원래 값의 형식을 따라감
+      body[f.name] = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(f.value) ? `${m}/${d}/${y}` : `${y}-${m}-${d}`;
+    } else if (/day/.test(n)) body[f.name] = String(Number(d));
+    else if (/month/.test(n)) body[f.name] = String(Number(m));
+    else if (/year/.test(n)) body[f.name] = y;
+    else if (f.type === "hidden") body[f.name] = f.value;
+    else if (f.type === "radio" || f.type === "checkbox") {
+      if (/csv/i.test(f.value)) body[f.name] = f.value;
+    }
+  }
+  const btn = submits.find((b) => /csv/i.test(b.value) || /csv/i.test(b.name)) ?? submits[0];
+  if (btn) body[btn.name] = btn.value;
+  return body;
+}
+
+async function post(body, session) {
+  const res = await fetch(session?.action ?? URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": UA,
+      Accept: "text/html,text/csv,*/*",
+      Referer: session?.pageUrl ?? URL,
+      ...(session?.cookie ? { Cookie: session.cookie } : {}),
+    },
+    body: new URLSearchParams(body).toString(),
+    cache: "no-store",
+  });
+  return { ok: res.ok, status: res.status, text: await res.text() };
+}
+
+// 결과 캐시 (지난 날짜 가격은 바뀌지 않음)
+const cache = new Map();
+
+/** dateIso: "YYYY-MM-DD" (그날 종가). 휴일이거나 자료가 없으면 [] */
+export async function fetchFedInvestPrices(dateIso) {
+  if (cache.has(dateIso)) return cache.get(dateIso);
+  const [y, m, d] = dateIso.split("-");
+  let rows = [];
+
+  // 1순위: 양식 페이지에서 읽은 토큰·쿠키·입력칸 이름으로 요청
+  const session = await getSession();
+  if (session.ok) {
+    try {
+      const { ok, text } = await post(buildBody(session, y, m, d), session);
+      if (ok) rows = parseText(text);
+    } catch {
+      // 아래 방식 시도
+    }
+  }
+
+  // 2순위: 알려진 입력칸 이름들
+  if (!rows.length) {
+    for (const body of variants(y, m, d)) {
+      try {
+        const { ok, text } = await post(body, session.ok ? session : null);
+        if (!ok) continue;
+        rows = parseText(text);
+        if (rows.length) break;
+      } catch {
+        // 다음 방식
+      }
+    }
+  }
+
+  if (rows.length) cache.set(dateIso, rows);
+  return rows;
+}
+
+/** 진단용: 양식 페이지에서 읽은 내용과 요청 결과 */
+export async function fetchFedInvestDebug(dateIso) {
+  const [y, m, d] = dateIso.split("-");
+  sessionPromise = null; // 새로 열기
+  const session = await getSession();
+  const out = {
+    formPage: session.ok
+      ? {
+          pageUrl: session.pageUrl,
+          status: session.status,
+          hasCookie: !!session.cookie,
+          action: session.action,
+          fields: session.fields.map((f) => `${f.name}(${f.type}${f.value ? "=" + f.value.slice(0, 20) : ""})`),
+        }
+      : "양식 페이지를 읽지 못함",
+    tries: [],
+  };
+  if (session.ok) {
+    const body = buildBody(session, y, m, d);
+    try {
+      const { status, text } = await post(body, session);
+      out.tries.push({ how: "양식 기반", sent: Object.keys(body), status, rows: parseText(text).length, snippet: text.replace(/\s+/g, " ").slice(0, 300) });
+    } catch (e) {
+      out.tries.push({ how: "양식 기반", error: String(e) });
+    }
+  }
+  return out;
+}
+
+/** 최근 영업일부터 거슬러 올라가며 가격이 있는 첫 날짜 */
+export async function fetchLatestFedInvest(maxBack = 7) {
+  const d = new Date();
+  for (let i = 0; i <= maxBack; i++) {
+    const day = d.getUTCDay();
+    if (day !== 0 && day !== 6) {
+      const iso = d.toISOString().slice(0, 10);
+      const rows = await fetchFedInvestPrices(iso);
+      if (rows.length) return { date: iso, rows };
+    }
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  return null;
+}

@@ -231,8 +231,8 @@ export default function Home() {
     : "";
 
   const treasuryBasisData = treasuryBasis.data;
-  const treasuryBasisBad =
-    treasuryBasisData?.grossBasis != null && Math.abs(treasuryBasisData.grossBasis) > 0.25;
+  // Basis: Implied Repo − SOFR가 ±50bp 이상이면 경계 (Basis 카드와 같은 기준)
+  const treasuryBasisBad = treasuryBasisData?.signal?.level === "bad";
 
   // Treasury Auction Tail (20Y/30Y): helious.io에서 자동으로 받아온 값으로 경계 신호 계산
   const auctionTailData = auctionTail.data;
