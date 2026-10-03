@@ -22,6 +22,12 @@ function fmtMD(d) {
   return `${Number(m)}/${Number(day)}`;
 }
 
+function fmtMDY(d) {
+  if (!d) return "";
+  const [y, m, day] = d.split("-");
+  return `${m}/${day}/${y.slice(2)}`;
+}
+
 function ContractTable({ c }) {
   const prevShort = c.points.length > 1 ? c.points[c.points.length - 2].short : null;
   const shortDrop =
@@ -46,6 +52,14 @@ function ContractTable({ c }) {
         </div>
         <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{c.link}</div>
       </div>
+      {c.ctd && (
+        <div style={{ fontSize: 11, color: "#7e22ce", marginTop: 2 }}>
+          CTD 추정: T {Number(c.ctd.coupon).toFixed(3)} {fmtMDY(c.ctd.maturity)}{" "}
+          <span style={{ color: "#9ca3af" }}>
+            ({c.ctd.cusip}, CF {c.ctd.cf})
+          </span>
+        </div>
+      )}
       {alert && (
         <div style={{ fontSize: 11.5, color: "#dc2626", fontWeight: 700, marginTop: 2 }}>
           숏 {(shortDrop * 100).toFixed(1)}% 급감. 포지션 청산 가능성 주의
@@ -177,6 +191,8 @@ export default function CftcTreasuryCard() {
               <ContractTable key={c.code} c={c} />
             ))}
             <div style={{ fontSize: 10.5, color: "#9ca3af", lineHeight: 1.6 }}>
+              {data.ctdDeliveryMonth &&
+                `CTD는 ${data.ctdDeliveryMonth} 인도월 기준으로 재무부 금리곡선을 이용해 자동 추정한 값이에요(실제와 다를 수 있음). `}
               매주 금요일 오후(미국) 발표, 한국 시간 토요일 새벽 반영. 숏이 한 주에 5% 넘게 줄면 빨간색으로
               경고합니다(베이시스 거래 청산 가능성).
             </div>

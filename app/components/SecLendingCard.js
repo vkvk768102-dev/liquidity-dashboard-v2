@@ -13,6 +13,45 @@ function fmtRate(v) {
   return v == null ? "-" : `${v.toFixed(3)}%`;
 }
 
+const TAG_STYLE = {
+  otr: { background: "#dbeafe", color: "#1d4ed8" },
+  offrun: { background: "#f1f5f9", color: "#475569" },
+  ctd: { background: "#f3e8ff", color: "#7e22ce" },
+};
+
+function Tags({ tags }) {
+  if (!tags || !tags.length) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 4, marginLeft: 4, verticalAlign: "middle", flexWrap: "wrap" }}>
+      {tags.map((t) => (
+        <span
+          key={t.label}
+          style={{
+            ...(TAG_STYLE[t.type] ?? TAG_STYLE.offrun),
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 999,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {t.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function readCtdConfig() {
+  try {
+    const raw = localStorage.getItem("treasury-basis-ctd-config");
+    const c = raw ? JSON.parse(raw) : null;
+    return { ctdCoupon: c?.ctdCoupon ?? "4.5", ctdMaturity: c?.ctdMaturity ?? "2033-08-31" };
+  } catch {
+    return { ctdCoupon: "4.5", ctdMaturity: "2033-08-31" };
+  }
+}
+
 function fmtMD(d) {
   if (!d) return "";
   const [, m, day] = d.split("-");
@@ -38,6 +77,7 @@ function TrendTable({ item }) {
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 12, fontWeight: 600 }}>
         {item.description} <span style={{ color: "#9ca3af", fontWeight: 400 }}>{item.cusip}</span>
+        <Tags tags={item.tags} />
       </div>
       {streak >= 2 && (
         <div style={{ fontSize: 11.5, color: "#dc2626", fontWeight: 600 }}>수수료 {streak}일 연속 상승</div>
@@ -92,7 +132,8 @@ export default function SecLendingCard() {
     let alive = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/sec-lending", { cache: "no-store" });
+        const qs = new URLSearchParams(readCtdConfig()).toString();
+        const res = await fetch(`/api/sec-lending?${qs}`, { cache: "no-store" });
         const d = await res.json();
         if (!res.ok || d.ok === false) throw new Error(d.error || `요청 실패 (${res.status})`);
         if (alive) setState({ loading: false, error: null, data: d });
@@ -214,7 +255,10 @@ export default function SecLendingCard() {
                     {data.topByRate.map((r) => (
                       <tr key={r.cusip}>
                         <td style={cell}>
-                          <div>{r.description}</div>
+                          <div>
+                            {r.description}
+                            <Tags tags={r.tags} />
+                          </div>
                           <div style={{ color: "#9ca3af", fontSize: 10.5 }}>{r.cusip}</div>
                         </td>
                         <td style={num}>{fmtEok(r.submitted)}</td>
@@ -232,8 +276,59 @@ export default function SecLendingCard() {
             {data.biggest && (
               <div style={{ fontSize: 12, lineHeight: 1.5 }}>
                 <span style={{ fontWeight: 600 }}>물량 최대: </span>
-                {data.biggest.description} ({data.biggest.cusip}) {fmtEok(data.biggest.accepted)}, 수수료{" "}
+                {data.biggest.description}
+                <Tags tags={data.biggest.tags} /> ({data.biggest.cusip}) {fmtEok(data.biggest.accepted)}, 수수료{" "}
                 {fmtRate(data.biggest.rate)}
+              </div>
+            )}
+
+            {data.benchmarks?.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 4 }}>최신물·CTD 오늘 현황</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+                    <thead>
+                      <tr style={{ color: "#6b7280" }}>
+                        <th style={{ ...cell, textAlign: "left", fontWeight: 500 }}>구분</th>
+                        <th style={{ ...cell, textAlign: "left", fontWeight: 500 }}>종목</th>
+                        <th style={{ ...num, fontWeight: 500 }}>배정</th>
+                        <th style={{ ...num, fontWeight: 500 }}>수수료</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.benchmarks.map((b) => (
+                        <tr key={b.kind + b.cusip}>
+                          <td style={{ ...cell, whiteSpace: "nowrap", fontWeight: 600 }}>{b.kind}</td>
+                          <td style={cell}>
+                            <div>{b.description || "-"}</div>
+                            <div style={{ color: "#9ca3af", fontSize: 10.5 }}>{b.cusip}</div>
+                          </td>
+                          {b.listed && b.accepted > 0 ? (
+                            <>
+                              <td style={{ ...num, color: b.submitted > b.accepted ? "#dc2626" : undefined }}>
+                                {fmtEok(b.accepted)}
+                              </td>
+                              <td style={{ ...num, fontWeight: 700, color: b.rate != null && b.rate > MIN_FEE * 2 ? "#dc2626" : undefined }}>
+                                {fmtRate(b.rate)}
+                              </td>
+                            </>
+                          ) : (
+                            <td style={{ ...num, color: "#9ca3af" }} colSpan={2}>
+                              오늘 대차 없음
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 4, lineHeight: 1.6 }}>
+                  최신물 = 가장 최근 발행된 국채, 직전물 = 바로 전에 발행된 국채(재무부 입찰 자료로 자동 판별).
+                  {data.ctdAuto
+                    ? ` CTD = 국채선물별 인도에 가장 싼 국채를 재무부 금리곡선으로 자동 추정(${data.ctdDeliveryMonth} 인도월 기준). 실제 CTD와 다를 수 있어요.`
+                    : " CTD = 자동 추정에 실패해 Treasury Basis 카드 설정값(10년 선물)을 사용 중이에요."}
+                  {!data.otrAvailable && " (오늘은 재무부 자료를 불러오지 못해 최신물 구분이 빠졌어요)"}
+                </div>
               </div>
             )}
 
