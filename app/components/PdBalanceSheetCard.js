@@ -48,7 +48,18 @@ function ValueBox({ label, date, value, change }) {
       <div style={{ fontSize: 12, color: "#374151", fontWeight: 600 }}>
         {label} ({shortDate(date)})
       </div>
-      <div style={{ fontSize: 20, fontWeight: 800, margin: "4px 0 2px" }}>{fmtEok(value)}</div>
+      <div style={{ margin: "4px 0 2px", whiteSpace: "nowrap" }}>
+        {value == null ? (
+          <span style={{ fontSize: 20, fontWeight: 800 }}>-</span>
+        ) : (
+          <>
+            <span style={{ fontSize: 20, fontWeight: 800 }}>
+              {(value / 100).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 2 }}>억 달러</span>
+          </>
+        )}
+      </div>
       {change != null && (
         <div style={{ fontSize: 11.5, color: up ? "#dc2626" : "#16a34a", fontWeight: 600 }}>
           (전주 대비 {fmtEokDiff(change)})
