@@ -59,8 +59,9 @@ function parseText(text) {
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
 // 1단계: 사람처럼 먼저 양식 페이지를 열어 쿠키·보안 토큰·입력칸 이름을 읽어옴
-let sessionPromise = null;
-let sessionTime = 0;
+// 중요: 이 사이트는 "어느 날짜를 골랐는지"를 방문자(쿠키)별로 서버에 기억해 둔 뒤 결과 페이지로 넘겨줌.
+// 그래서 쿠키 하나로 여러 날짜를 동시에 요청하면 날짜가 서로 뒤바뀌어 다른 날 가격이 섞여 들어옴.
+// → 날짜마다 방문(쿠키)을 따로 열어서 섞이지 않게 함.
 
 function cookiesFrom(res) {
   const list = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [res.headers.get("set-cookie")];
@@ -90,23 +91,47 @@ function parseForm(html, pageUrl) {
   return { action, fields };
 }
 
-async function getSession() {
-  if (sessionPromise && Date.now() - sessionTime < 10 * 60 * 1000) return sessionPromise;
-  sessionTime = Date.now();
-  sessionPromise = (async () => {
-    for (const pageUrl of [URL, `${URL}.htm`]) {
-      try {
-        const res = await fetch(pageUrl, { headers: { "User-Agent": UA, Accept: "text/html" }, cache: "no-store" });
-        const html = await res.text();
-        const form = parseForm(html, pageUrl);
-        if (form && form.fields.length) return { ok: true, pageUrl, status: res.status, cookie: cookiesFrom(res), ...form };
-      } catch {
-        // 다음 주소 시도
-      }
+async function openSession() {
+  for (const pageUrl of [URL, `${URL}.htm`]) {
+    try {
+      const res = await fetch(pageUrl, { headers: { "User-Agent": UA, Accept: "text/html" }, cache: "no-store" });
+      const html = await res.text();
+      const form = parseForm(html, pageUrl);
+      if (form && form.fields.length) return { ok: true, pageUrl, status: res.status, cookie: cookiesFrom(res), ...form };
+    } catch {
+      // 다음 주소 시도
     }
-    return { ok: false };
-  })();
-  return sessionPromise;
+  }
+  return { ok: false };
+}
+
+// 한꺼번에 너무 많이 요청하지 않도록 동시에 6개까지만
+const MAX_PARALLEL = 6;
+let running = 0;
+const waiting = [];
+async function limited(fn) {
+  if (running >= MAX_PARALLEL) await new Promise((r) => waiting.push(r));
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
+// 받은 페이지에 적힌 날짜("Prices For: Oct 2, 2026")가 요청한 날짜와 다르면 버림 (날짜 뒤바뀜 방지 이중 확인)
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function pageDate(text) {
+  const m = /Prices\s+For:?\s*(?:<[^>]+>\s*)*([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i.exec(text);
+  if (!m) return null;
+  const mo = MONTHS[m[1].toLowerCase()];
+  return mo ? `${m[3]}-${String(mo).padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+}
+function rowsFor(text, dateIso) {
+  const shown = pageDate(text);
+  if (shown && shown !== dateIso) return [];
+  return parseText(text);
 }
 
 // 양식 입력칸 이름에 맞춰 날짜·토큰·CSV 버튼을 채움
@@ -159,18 +184,29 @@ export function isFinalDay(rows) {
   return !!rows?.length && rows.filter((r) => r.final).length >= rows.length / 2;
 }
 
+const inflight = new Map(); // 같은 날짜를 동시에 두 번 요청하지 않도록
+
 /** dateIso: "YYYY-MM-DD" (그날 종가). 휴일이거나 자료가 없으면 [] */
 export async function fetchFedInvestPrices(dateIso) {
   if (cache.has(dateIso)) return cache.get(dateIso);
+  if (inflight.has(dateIso)) return inflight.get(dateIso);
+  const p = limited(() => loadDay(dateIso)).finally(() => inflight.delete(dateIso));
+  inflight.set(dateIso, p);
+  return p;
+}
+
+async function loadDay(dateIso) {
   const [y, m, d] = dateIso.split("-");
   let rows = [];
 
+  // 이 날짜 전용 방문(쿠키)을 새로 엶
+  const session = await openSession();
+
   // 1순위: 양식 페이지에서 읽은 토큰·쿠키·입력칸 이름으로 요청
-  const session = await getSession();
   if (session.ok) {
     try {
       const { ok, text } = await post(buildBody(session, y, m, d), session);
-      if (ok) rows = parseText(text);
+      if (ok) rows = rowsFor(text, dateIso);
     } catch {
       // 아래 방식 시도
     }
@@ -182,7 +218,7 @@ export async function fetchFedInvestPrices(dateIso) {
       try {
         const { ok, text } = await post(body, session.ok ? session : null);
         if (!ok) continue;
-        rows = parseText(text);
+        rows = rowsFor(text, dateIso);
         if (rows.length) break;
       } catch {
         // 다음 방식
@@ -199,8 +235,7 @@ export async function fetchFedInvestPrices(dateIso) {
 /** 진단용: 양식 페이지에서 읽은 내용과 요청 결과 */
 export async function fetchFedInvestDebug(dateIso) {
   const [y, m, d] = dateIso.split("-");
-  sessionPromise = null; // 새로 열기
-  const session = await getSession();
+  const session = await openSession();
   const out = {
     formPage: session.ok
       ? {
@@ -217,7 +252,7 @@ export async function fetchFedInvestDebug(dateIso) {
     const body = buildBody(session, y, m, d);
     try {
       const { status, text } = await post(body, session);
-      out.tries.push({ how: "양식 기반", sent: Object.keys(body), status, rows: parseText(text).length, snippet: text.replace(/\s+/g, " ").slice(0, 300) });
+      out.tries.push({ how: "양식 기반", sent: Object.keys(body), status, rows: parseText(text).length, pageDate: pageDate(text), snippet: text.replace(/\s+/g, " ").slice(0, 300) });
     } catch (e) {
       out.tries.push({ how: "양식 기반", error: String(e) });
     }

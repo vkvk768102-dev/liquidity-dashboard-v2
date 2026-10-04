@@ -6,9 +6,10 @@
 // - 장이 끝나 확정된 종가만 사용 (장중 가격을 섞으면 숫자가 하루에도 여러 번 바뀜)
 import { priceFromYield, decimalToTicks } from "@/lib/bondMath";
 import { fetchFedInvestPrices, fetchFedInvestDebug, isFinalDay } from "../../lib/treasuryPrices.js";
-import { fetchSecurityInfo, pickCtd, rankCtd } from "../../lib/ctd.js";
+import { fetchSecurityInfo, pickCtd, rankCtd, deliveryMonth } from "../../lib/ctd.js";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // 재무부 가격을 날짜마다 따로 받아 오느라 처음 한 번은 몇 초 걸릴 수 있음
 
 const WEEKS = 4;
 const HYSTERESIS = 0.05; // 새 후보가 Implied Repo로 0.05%p 이상 앞설 때만 CTD 교체
@@ -51,6 +52,21 @@ async function fetchFuturesCloses(symbol) {
   } catch {
     return null;
   }
+}
+
+// 그 날짜에 계산 기준이 되는 선물 월물 기호 (예: 2026년 12월물 → ZNZ26.CBT)
+// ZN=F(연결 선물)는 월물이 바뀌는 시기(3·6·9·12월 초~하순)에 이전 월물 가격이 나와서,
+// 전환계수·인도일(다음 월물 기준)과 서로 다른 월물이 섞이는 문제가 있음 → 월물을 직접 지정
+const MONTH_CODE = { 2: "H", 5: "M", 8: "U", 11: "Z" };
+function contractSymbol(dateIso) {
+  const dm = deliveryMonth(new Date(dateIso + "T00:00:00Z"));
+  if (!dm) return null;
+  return `ZN${MONTH_CODE[dm.first.getUTCMonth()]}${String(dm.first.getUTCFullYear()).slice(2)}.CBT`;
+}
+// ZN=F가 아직 이전 월물일 수 있는 기간 (인도월 1일~26일): 월물 지정 가격을 못 구하면 이 기간은 계산에서 뺌
+function genericMismatch(dateIso) {
+  const [, m, d] = dateIso.split("-").map(Number);
+  return m % 3 === 0 && d <= 26;
 }
 
 // 뉴욕연은 SOFR 최근 값들: Map(날짜 → %)
@@ -125,12 +141,25 @@ export async function GET(request) {
     const mCf = parseFloat(searchParams.get("cf"));
 
     const dates = recentWeekdays(WEEKS * 7);
-    const [hist, info, priceLists, sofrMap] = await Promise.all([
-      fetchFuturesCloses(futuresSymbol),
+    const auto = futuresSymbol === "ZN=F"; // 기본값이면 날짜별 월물을 자동 지정
+    const symByDate = dates.map((d) => (auto ? contractSymbol(d) : futuresSymbol));
+    const symbols = [...new Set(symByDate.filter(Boolean))];
+    const [generic, contractHists, info, priceLists, sofrMap] = await Promise.all([
+      auto ? fetchFuturesCloses("ZN=F") : null,
+      Promise.all(symbols.map((sym) => fetchFuturesCloses(sym))),
       fetchSecurityInfo(),
       Promise.all(dates.map((d) => fetchFedInvestPrices(d))),
       fetchSofr(),
     ]);
+    const histBySym = new Map(symbols.map((sym, k) => [sym, contractHists[k]?.closes?.size ? contractHists[k] : null]));
+    // 날짜별로 쓸 선물 자료: 월물 지정 가격 → (없으면) ZN=F. 단, ZN=F가 이전 월물일 수 있는 기간은 제외
+    const histByDate = dates.map((d, i) => {
+      const own = histBySym.get(symByDate[i]);
+      if (own) return { hist: own, symbol: symByDate[i] };
+      if (auto && generic && !genericMismatch(d)) return { hist: generic, symbol: "ZN=F" };
+      return null;
+    });
+    const hist = [...histByDate].reverse().find(Boolean)?.hist ?? generic ?? null;
     if (!hist && !searchParams.get("debug")) return Response.json({ error: "선물가격을 가져오지 못했습니다." }, { status: 502 });
 
     // 계산에 쓸 날짜: 장이 끝났고(시계 기준) 재무부 확정 종가가 올라온 날만
@@ -141,9 +170,10 @@ export async function GET(request) {
 
     // i번째 날짜의 선물 종가 = (i + shift)번째 평일 날짜로 표기된 종가. 끝나지 않은 날이거나 그날 종가가 없으면 그날은 건너뜀
     const futAtIdx = (i, shift) => {
-      if (!hist) return null;
+      const h = histByDate[i]?.hist;
+      if (!h) return null;
       const label = dates[i + shift];
-      return label && isClosed(label) && hist.closes.has(label) ? hist.closes.get(label) : null;
+      return label && isClosed(label) && h.closes.has(label) ? h.closes.get(label) : null;
     };
 
     // 선물 날짜 보정(안전장치): 기본은 보정 없음(0). −1/+1일 쪽이 확실히 더 매끄러울 때만 적용
@@ -198,7 +228,7 @@ export async function GET(request) {
         currentCtd = chosen.cusip;
         const other = ranked.find((c) => c.cusip !== chosen.cusip);
         history.push({
-          date, futures, cash: chosen.price, cf: chosen.cf,
+          date, futures, cash: chosen.price, cf: chosen.cf, symbol: histByDate[i].symbol,
           basis: chosen.price - futures * chosen.cf,
           cusip: chosen.cusip, coupon: chosen.coupon, maturity: chosen.maturity,
           irr: chosen.irr,
@@ -209,7 +239,7 @@ export async function GET(request) {
         const row = rows.find((r) => Math.abs(r.coupon - mCoupon) < 1e-6 && r.maturity === mMaturity);
         if (!row) return;
         history.push({
-          date, futures, cash: row.price, cf: mCf,
+          date, futures, cash: row.price, cf: mCf, symbol: histByDate[i].symbol,
           basis: row.price - futures * mCf,
           cusip: row.cusip, coupon: mCoupon, maturity: mMaturity,
         });
@@ -226,7 +256,9 @@ export async function GET(request) {
         fedInvestTry: await fetchFedInvestDebug(lastWeekday),
         fedInvestDays: withRows,
         fedInvestSample: sample,
-        futuresDays: hist ? [...hist.closes.keys()].slice(-8) : null,
+        futuresSymbols: symbols.map((sym) => ({ symbol: sym, ok: !!histBySym.get(sym), lastDays: histBySym.get(sym) ? [...histBySym.get(sym).closes.keys()].slice(-5) : null })),
+        genericDays: generic ? [...generic.closes.keys()].slice(-5) : null,
+        futuresByDate: dates.map((d, i) => ({ date: d, symbol: histByDate[i]?.symbol ?? null, close: futAtIdx(i, 0) })),
         futuresLast: hist?.last ?? null,
         auctionInfoCount: info.size,
         futuresShift,
@@ -302,7 +334,7 @@ export async function GET(request) {
       mode,
       method: "실제 종가",
       signal,
-      futuresSymbol,
+      futuresSymbol: latest.symbol ?? futuresSymbol,
       futuresPrice: latest.futures,
       cf: latest.cf,
       ctdCoupon: latest.coupon,
@@ -320,6 +352,9 @@ export async function GET(request) {
       gap: latest.gap != null ? Number(latest.gap.toFixed(3)) : null,
       history: history.map((h) => ({
         date: h.date,
+        futures: Number(h.futures.toFixed(4)),
+        cash: Number(h.cash.toFixed(4)),
+        symbol: h.symbol,
         basis: Number(h.basis.toFixed(4)),
         irr: h.irr != null ? Number(h.irr.toFixed(3)) : null,
         cusip: h.cusip,
