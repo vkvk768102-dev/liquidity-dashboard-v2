@@ -24,7 +24,8 @@ function parseRows(cells) {
     const sell = parseFloat(c[6]);
     const price = eod > 0 ? eod : buy > 0 && sell > 0 ? (buy + sell) / 2 : NaN;
     if (!maturity || !Number.isFinite(coupon) || !Number.isFinite(price) || price <= 0) continue;
-    out.push({ cusip, type, coupon, maturity, price });
+    // final: 그날 확정 종가(End of Day)가 올라온 값인지. 장중에는 종가 칸이 비어 있어 매수·매도 중간값을 임시로 씀
+    out.push({ cusip, type, coupon, maturity, price, final: eod > 0 });
   }
   return out;
 }
@@ -150,8 +151,13 @@ async function post(body, session) {
   return { ok: res.ok, status: res.status, text: await res.text() };
 }
 
-// 결과 캐시 (지난 날짜 가격은 바뀌지 않음)
+// 결과 캐시 (확정 종가만 저장. 장중 임시 가격을 저장해 두면 장이 끝난 뒤에도 그 값이 계속 쓰여서 숫자가 오락가락함)
 const cache = new Map();
+
+/** 그날 가격이 확정 종가인지 (절반 이상 종목에 종가가 올라와 있으면 확정으로 봄) */
+export function isFinalDay(rows) {
+  return !!rows?.length && rows.filter((r) => r.final).length >= rows.length / 2;
+}
 
 /** dateIso: "YYYY-MM-DD" (그날 종가). 휴일이거나 자료가 없으면 [] */
 export async function fetchFedInvestPrices(dateIso) {
@@ -184,7 +190,9 @@ export async function fetchFedInvestPrices(dateIso) {
     }
   }
 
-  if (rows.length) cache.set(dateIso, rows);
+  // 확정 종가이거나, 3일 넘게 지난 날짜(더 바뀔 일 없음)만 저장
+  const old = Date.now() - Date.parse(dateIso + "T00:00:00Z") > 3 * 86400000;
+  if (rows.length && (isFinalDay(rows) || old)) cache.set(dateIso, rows);
   return rows;
 }
 

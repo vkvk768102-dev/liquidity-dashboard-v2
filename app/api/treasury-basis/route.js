@@ -3,9 +3,10 @@
 // - 자동 모드(기본): 재무부 FedInvest 실제 종가 + 선물 종가로 Implied Repo가 가장 높은 국채를 CTD로 자동 선택
 // - 수동 모드: 직접 입력한 CTD(쿠폰·만기·CF) 사용. 현물가격은 실제 종가에서 찾고, 없으면 금리곡선으로 추정
 // - 최근 4주 일별 추이(CTD가 바뀐 날 표시) 함께 제공
+// - 장이 끝나 확정된 종가만 사용 (장중 가격을 섞으면 숫자가 하루에도 여러 번 바뀜)
 import { priceFromYield, decimalToTicks } from "@/lib/bondMath";
-import { fetchFedInvestPrices, fetchFedInvestDebug } from "../../lib/treasuryPrices.js";
-import { fetchSecurityInfo, fetchFuturesHistory, closeOn, pickCtd, rankCtd } from "../../lib/ctd.js";
+import { fetchFedInvestPrices, fetchFedInvestDebug, isFinalDay } from "../../lib/treasuryPrices.js";
+import { fetchSecurityInfo, pickCtd, rankCtd } from "../../lib/ctd.js";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,44 @@ const WEEKS = 4;
 const HYSTERESIS = 0.05; // 새 후보가 Implied Repo로 0.05%p 이상 앞설 때만 CTD 교체
 const SIGNAL_WATCH = 25; // Implied Repo − SOFR 차이(bp) 주의 기준
 const SIGNAL_BAD = 50; // 경계 기준
+const UNSTABLE_RANGE = 100; // 최근 5일 값의 최대−최소가 이보다 크면(bp) "데이터 흔들림"으로 표시
+const SHIFT_MARGIN = 0.7; // 날짜 보정은 확실히(30% 이상) 더 매끄러울 때만 적용
+
+// 그 날짜의 미국 장이 끝났는지: 선물 마감(뉴욕 17시 = UTC 21~22시) 이후만 "끝난 날"로 봄
+const isClosed = (dateIso) => Date.now() >= Date.parse(dateIso + "T22:30:00Z");
+
+const median = (arr) => {
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+// 선물 거래일 읽기: 뉴욕시간 18시에 다음 거래일이 시작되므로 6시간을 더한 뒤 뉴욕 날짜를 읽음
+// (UTC 날짜로 읽으면 저녁 시간대의 진행 중 가격이 전날 종가를 덮어쓰는 문제가 생김)
+const NY_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+const tradeDate = (tsSec) => NY_DATE.format(new Date((tsSec + 6 * 3600) * 1000));
+
+/** Yahoo 선물 일별 종가: { closes: Map(거래일 → 종가), last } */
+async function fetchFuturesCloses(symbol) {
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=3mo&interval=1d`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return null;
+    const r = (await res.json())?.chart?.result?.[0];
+    if (!r) return null;
+    const ts = r.timestamp ?? [];
+    const cl = r.indicators?.quote?.[0]?.close ?? [];
+    const closes = new Map();
+    ts.forEach((t, i) => {
+      if (cl[i] != null) closes.set(tradeDate(t), cl[i]);
+    });
+    return { closes, last: r.meta?.regularMarketPrice ?? null };
+  } catch {
+    return null;
+  }
+}
 
 // 뉴욕연은 SOFR 최근 값들: Map(날짜 → %)
 async function fetchSofr() {
@@ -87,41 +126,51 @@ export async function GET(request) {
 
     const dates = recentWeekdays(WEEKS * 7);
     const [hist, info, priceLists, sofrMap] = await Promise.all([
-      fetchFuturesHistory(futuresSymbol),
+      fetchFuturesCloses(futuresSymbol),
       fetchSecurityInfo(),
       Promise.all(dates.map((d) => fetchFedInvestPrices(d))),
       fetchSofr(),
     ]);
     if (!hist && !searchParams.get("debug")) return Response.json({ error: "선물가격을 가져오지 못했습니다." }, { status: 502 });
 
-    // 선물 종가 날짜 맞추기: 사이트마다 날짜 표기가 하루씩 어긋날 수 있어서
-    // −1/0/+1 거래일 중 같은 국채의 베이시스가 가장 매끄럽게 이어지는 쪽을 자동 선택
-    // i번째 날짜의 선물 종가 = (i + shift)번째 평일 날짜로 표기된 종가
+    // 계산에 쓸 날짜: 장이 끝났고(시계 기준) 재무부 확정 종가가 올라온 날만
+    // (확정 여부를 알 수 없는 형식이면 시계 기준만 적용)
+    const finalFlags = priceLists.map((l) => isFinalDay(l));
+    const anyFinal = finalFlags.some(Boolean);
+    const usable = dates.map((d, i) => !!priceLists[i]?.length && isClosed(d) && (!anyFinal || finalFlags[i]));
+
+    // i번째 날짜의 선물 종가 = (i + shift)번째 평일 날짜로 표기된 종가. 끝나지 않은 날이거나 그날 종가가 없으면 그날은 건너뜀
     const futAtIdx = (i, shift) => {
       if (!hist) return null;
       const label = dates[i + shift];
-      if (label && hist.closes.has(label)) return hist.closes.get(label);
-      return shift === 0 ? closeOn(hist, dates[i]) : null;
+      return label && isClosed(label) && hist.closes.has(label) ? hist.closes.get(label) : null;
     };
+
+    // 선물 날짜 보정(안전장치): 기본은 보정 없음(0). −1/+1일 쪽이 확실히 더 매끄러울 때만 적용
     let futuresShift = 0;
     if (hist && mode === "auto") {
-      const lastIdx = priceLists.map((l) => l?.length > 0).lastIndexOf(true);
+      const lastIdx = usable.lastIndexOf(true);
       const ref = lastIdx >= 0 ? pickCtd("ZN", priceLists[lastIdx], info, futAtIdx(lastIdx, 0), dates[lastIdx]) : null;
       if (ref) {
-        let bestScore = Infinity;
-        for (const shift of [0, -1, 1]) {
+        const scoreOf = (shift) => {
           const series = [];
           dates.forEach((date, i) => {
-            const row = priceLists[i]?.find((r) => r.cusip === ref.cusip);
+            if (!usable[i]) return;
+            const row = priceLists[i].find((r) => r.cusip === ref.cusip);
             const f = futAtIdx(i, shift);
             if (row && f) series.push(row.price - f * ref.cf);
           });
-          if (series.length < 5) continue;
+          if (series.length < 5) return Infinity;
           let sum = 0;
           for (let k = 1; k < series.length; k++) sum += Math.abs(series[k] - series[k - 1]);
-          const score = sum / (series.length - 1);
-          if (score < bestScore - 1e-9) {
-            bestScore = score;
+          return sum / (series.length - 1);
+        };
+        const base = scoreOf(0);
+        let bestScore = base;
+        for (const shift of [-1, 1]) {
+          const sc = scoreOf(shift);
+          if (sc < base * SHIFT_MARGIN && sc < bestScore) {
+            bestScore = sc;
             futuresShift = shift;
           }
         }
@@ -134,7 +183,7 @@ export async function GET(request) {
     dates.forEach((date, i) => {
       const rows = priceLists[i];
       const futures = futAtIdx(i, futuresShift);
-      if (!rows?.length || !futures) return;
+      if (!usable[i] || !futures) return;
 
       if (mode === "auto") {
         const ranked = rankCtd("ZN", rows, info, futures, date);
@@ -169,7 +218,7 @@ export async function GET(request) {
 
     // 진단 모드: /api/treasury-basis?debug=1
     if (searchParams.get("debug")) {
-      const withRows = dates.map((d, i) => ({ date: d, rows: priceLists[i]?.length ?? 0 }));
+      const withRows = dates.map((d, i) => ({ date: d, rows: priceLists[i]?.length ?? 0, final: finalFlags[i], closed: isClosed(d), used: usable[i] }));
       const sample = priceLists.find((l) => l?.length)?.slice(0, 3) ?? [];
       const lastWeekday = dates[dates.length - 1];
       return Response.json({
@@ -211,7 +260,7 @@ export async function GET(request) {
       });
     }
 
-    // 신호: Implied Repo − SOFR (최근 5일 평균, bp)
+    // 신호: Implied Repo − SOFR (최근 5일 중앙값, bp). 평균은 하루만 튀어도 크게 흔들려서 중앙값 사용
     const spreads = history
       .map((h) => {
         const sofr = sofrOn(sofrMap, h.date);
@@ -219,7 +268,8 @@ export async function GET(request) {
       })
       .filter((v) => v != null);
     const recent = spreads.slice(-5);
-    const spreadBp = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : null;
+    const spreadBp = recent.length ? median(recent) : null;
+    const unstable = recent.length >= 3 && Math.max(...recent) - Math.min(...recent) > UNSTABLE_RANGE;
     const latestSofr = sofrOn(sofrMap, latest.date);
     let signal = null;
     if (spreadBp != null) {
@@ -240,6 +290,8 @@ export async function GET(request) {
         level,
         spreadBp: Number(spreadBp.toFixed(1)),
         spreadTodayBp: spreads.length ? Number(spreads[spreads.length - 1].toFixed(1)) : null,
+        latestDate: latest.date,
+        unstable,
         sofr: latestSofr,
         direction: dir,
         message,

@@ -252,7 +252,7 @@ export default function TreasuryBasisCard() {
           {sig && (
             <div style={{ ...styles.ctdBox, marginTop: 6, borderLeft: `3px solid ${LEVEL_COLOR[sig.level]}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#98a2b3" }}>
-                <span>베이시스 거래 매력도 (Implied Repo − SOFR, 5일 평균)</span>
+                <span>베이시스 거래 매력도 (Implied Repo − SOFR, 최근 5일 중앙값)</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 2 }}>
                 <span style={{ fontSize: 18, fontWeight: 800, color: LEVEL_COLOR[sig.level] }}>
@@ -262,8 +262,19 @@ export default function TreasuryBasisCard() {
                 <span style={{ fontSize: 11, fontWeight: 700, color: LEVEL_COLOR[sig.level] }}>{LEVEL_LABEL[sig.level]}</span>
               </div>
               <div style={{ fontSize: 11.5, color: "#e4e7ec", marginTop: 2, lineHeight: 1.4 }}>{sig.message}</div>
+              {sig.spreadTodayBp != null && (
+                <div style={{ fontSize: 11, color: "#98a2b3", marginTop: 4, lineHeight: 1.4 }}>
+                  가장 최근 종가일{sig.latestDate ? `(${fmtMD(sig.latestDate)})` : ""} 하루 값: {sig.spreadTodayBp >= 0 ? "+" : ""}
+                  {sig.spreadTodayBp}bp
+                </div>
+              )}
+              {sig.unstable && (
+                <div style={{ fontSize: 10.5, color: "#fdb022", marginTop: 2, lineHeight: 1.4 }}>
+                  최근 5일 값이 서로 크게 달라요. 가격 데이터 오차일 수 있으니 참고만 하세요.
+                </div>
+              )}
               <div style={{ fontSize: 10, color: "#667085", marginTop: 4, lineHeight: 1.4 }}>
-                ±25bp 안이면 정상, 25~50bp 주의, 50bp 이상 경계. 마이너스면 레포로 돈 빌려 베이시스 거래 시 손해, 플러스면 이익.
+                ±25bp 안이면 정상, 25~50bp 주의, 50bp 이상 경계. 마이너스면 레포로 돈 빌려 베이시스 거래 시 손해, 플러스면 이익. 미국 장이 끝난 확정 종가로만 계산해서 하루에 한 번(한국시간 아침)만 바뀌어요.
               </div>
             </div>
           )}
