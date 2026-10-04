@@ -13,8 +13,14 @@ export const maxDuration = 60; // 재무부 가격을 날짜마다 따로 받아
 
 const WEEKS = 4;
 const HYSTERESIS = 0.05; // 새 후보가 Implied Repo로 0.05%p 이상 앞설 때만 CTD 교체
-const SIGNAL_WATCH = 25; // Implied Repo − SOFR 차이(bp) 주의 기준
-const SIGNAL_BAD = 50; // 경계 기준
+// Implied Repo − SOFR 차이(bp) 기준. 실제 자료를 보면 평소에도 +10~+30bp(베이시스 거래가 조금 남는 상태)가 보통이라
+// 플러스 쪽은 넉넉하게, 마이너스 쪽(역캐리)은 좁게 잡음
+const OK_LOW = -25; // 이 아래면 주의
+const OK_HIGH = 40; // 이 위면 주의
+const BAD_LOW = -50; // 이 아래면 경계
+const BAD_HIGH = 75; // 이 위면 경계
+const ALIGN_HOURS = [14, 15, 16]; // 현물 종가와 시각을 맞춰 볼 선물 가격 후보 (뉴욕시간)
+const ALIGN_MARGIN = 0.7; // 일별 종가보다 확실히(30% 이상) 더 매끄러울 때만 그 시각 가격을 씀
 const UNSTABLE_RANGE = 100; // 최근 5일 값의 최대−최소가 이보다 크면(bp) "데이터 흔들림"으로 표시
 const SHIFT_MARGIN = 0.7; // 날짜 보정은 확실히(30% 이상) 더 매끄러울 때만 적용
 
@@ -49,6 +55,44 @@ async function fetchFuturesCloses(symbol) {
       if (cl[i] != null) closes.set(tradeDate(t), cl[i]);
     });
     return { closes, last: r.meta?.regularMarketPrice ?? null };
+  } catch {
+    return null;
+  }
+}
+
+// 뉴욕시간 날짜·시·분
+const NY_PARTS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function nyParts(ms) {
+  const p = Object.fromEntries(NY_PARTS.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24, minute: Number(p.minute) };
+}
+
+/**
+ * Yahoo 선물 1시간 봉 → Map(뉴욕 시각 H → Map(날짜 → 그 시각의 가격))
+ * 현물 종가는 뉴욕 오후 3시 무렵 가격인데 선물 일별 종가는 오후 5시 가격이라, 그 2시간 사이 움직임이 오차로 들어감.
+ * 그래서 선물도 같은 시각 가격을 구해 둠 (H시 가격 = H−1시에 시작한 1시간 봉의 종가)
+ */
+async function fetchFuturesHourly(symbol) {
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=2mo&interval=60m`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return null;
+    const r = (await res.json())?.chart?.result?.[0];
+    if (!r) return null;
+    const ts = r.timestamp ?? [];
+    const cl = r.indicators?.quote?.[0]?.close ?? [];
+    const byHour = new Map(ALIGN_HOURS.map((h) => [h, new Map()]));
+    ts.forEach((t, i) => {
+      if (cl[i] == null) return;
+      const { date, hour, minute } = nyParts(t * 1000);
+      if (minute !== 0) return; // 정각에 시작한 봉만 (진행 중인 마지막 봉 제외)
+      byHour.get(hour + 1)?.set(date, cl[i]);
+    });
+    return byHour;
   } catch {
     return null;
   }
@@ -144,14 +188,16 @@ export async function GET(request) {
     const auto = futuresSymbol === "ZN=F"; // 기본값이면 날짜별 월물을 자동 지정
     const symByDate = dates.map((d) => (auto ? contractSymbol(d) : futuresSymbol));
     const symbols = [...new Set(symByDate.filter(Boolean))];
-    const [generic, contractHists, info, priceLists, sofrMap] = await Promise.all([
+    const [generic, contractHists, hourlyList, info, priceLists, sofrMap] = await Promise.all([
       auto ? fetchFuturesCloses("ZN=F") : null,
       Promise.all(symbols.map((sym) => fetchFuturesCloses(sym))),
+      Promise.all(symbols.map((sym) => fetchFuturesHourly(sym))),
       fetchSecurityInfo(),
       Promise.all(dates.map((d) => fetchFedInvestPrices(d))),
       fetchSofr(),
     ]);
     const histBySym = new Map(symbols.map((sym, k) => [sym, contractHists[k]?.closes?.size ? contractHists[k] : null]));
+    const hourlyBySym = new Map(symbols.map((sym, k) => [sym, hourlyList[k]]));
     // 날짜별로 쓸 선물 자료: 월물 지정 가격 → (없으면) ZN=F. 단, ZN=F가 이전 월물일 수 있는 기간은 제외
     const histByDate = dates.map((d, i) => {
       const own = histBySym.get(symByDate[i]);
@@ -207,12 +253,57 @@ export async function GET(request) {
       }
     }
 
+    // 선물 가격 시각 맞추기: 같은 국채의 베이시스가 가장 매끄럽게 이어지는 시각을 고름
+    // (시각이 맞을수록 하루하루 들쭉날쭉한 오차가 줄어듦). 확실히 낫지 않으면 지금처럼 일별 종가 사용
+    const hourPrice = (i, H) => {
+      const m = hourlyBySym.get(histByDate[i]?.symbol)?.get(H);
+      return m && isClosed(dates[i]) && m.has(dates[i]) ? m.get(dates[i]) : null;
+    };
+    let alignHour = null;
+    const timingScores = {};
+    {
+      const lastIdx = usable.lastIndexOf(true);
+      let ref = null;
+      if (mode === "auto" && lastIdx >= 0) ref = pickCtd("ZN", priceLists[lastIdx], info, futAtIdx(lastIdx, futuresShift), dates[lastIdx]);
+      else if (mCoupon && mMaturity && mCf && lastIdx >= 0) {
+        const row = priceLists[lastIdx].find((r) => Math.abs(r.coupon - mCoupon) < 1e-6 && r.maturity === mMaturity);
+        if (row) ref = { cusip: row.cusip, cf: mCf };
+      }
+      if (ref) {
+        const scoreOf = (get) => {
+          const series = [];
+          dates.forEach((date, i) => {
+            if (!usable[i]) return;
+            const row = priceLists[i].find((r) => r.cusip === ref.cusip);
+            const f = get(i);
+            if (row && f) series.push(row.price - f * ref.cf);
+          });
+          if (series.length < 10) return null;
+          let sum = 0;
+          for (let k = 1; k < series.length; k++) sum += Math.abs(series[k] - series[k - 1]);
+          return sum / (series.length - 1);
+        };
+        const base = scoreOf((i) => futAtIdx(i, futuresShift));
+        timingScores.close = base != null ? Number(base.toFixed(4)) : null;
+        let best = base != null ? base * ALIGN_MARGIN : null;
+        for (const H of ALIGN_HOURS) {
+          const sc = scoreOf((i) => hourPrice(i, H));
+          timingScores[H] = sc != null ? Number(sc.toFixed(4)) : null;
+          if (sc != null && best != null && sc < best) {
+            best = sc;
+            alignHour = H;
+          }
+        }
+      }
+    }
+    const futFor = (i) => (alignHour != null ? hourPrice(i, alignHour) : futAtIdx(i, futuresShift));
+
     // 일별 계산
     const history = [];
     let currentCtd = null;
     dates.forEach((date, i) => {
       const rows = priceLists[i];
-      const futures = futAtIdx(i, futuresShift);
+      const futures = futFor(i);
       if (!usable[i] || !futures) return;
 
       if (mode === "auto") {
@@ -262,6 +353,8 @@ export async function GET(request) {
         futuresLast: hist?.last ?? null,
         auctionInfoCount: info.size,
         futuresShift,
+        futuresTime: alignHour,
+        timingScores,
         historyCount: history.length,
       });
     }
@@ -305,18 +398,17 @@ export async function GET(request) {
     const latestSofr = sofrOn(sofrMap, latest.date);
     let signal = null;
     if (spreadBp != null) {
-      const abs = Math.abs(spreadBp);
-      const level = abs >= SIGNAL_BAD ? "bad" : abs >= SIGNAL_WATCH ? "watch" : "ok";
+      const level = spreadBp < BAD_LOW || spreadBp > BAD_HIGH ? "bad" : spreadBp < OK_LOW || spreadBp > OK_HIGH ? "watch" : "ok";
       const dir = spreadBp < 0 ? "낮음" : "높음";
       const message =
         level === "ok"
-          ? "Implied Repo와 SOFR가 비슷함. 베이시스 거래 유인 중립"
+          ? "Implied Repo가 SOFR와 비슷하거나 조금 높은 평소 수준. 베이시스 거래 유인 중립"
           : spreadBp < 0
           ? level === "bad"
             ? "베이시스 거래가 손해 나는 구간(역캐리). 헤지펀드 청산 유인 커짐"
             : "베이시스 거래 수익성 낮음. 새로 쌓을 유인 약함"
           : level === "bad"
-          ? "베이시스 거래 수익성 높음. 레버리지가 빠르게 쌓이기 쉬움"
+          ? "현물이 선물보다 많이 싸진 상태. 새로 들어가기엔 유리하지만, 며칠 새 급하게 벌어졌다면 기존 포지션 손실·청산 신호일 수 있음"
           : "베이시스 거래 수익성 양호. 포지션이 늘어날 수 있음";
       signal = {
         level,
@@ -324,6 +416,7 @@ export async function GET(request) {
         spreadTodayBp: spreads.length ? Number(spreads[spreads.length - 1].toFixed(1)) : null,
         latestDate: latest.date,
         unstable,
+        bands: { okLow: OK_LOW, okHigh: OK_HIGH, badLow: BAD_LOW, badHigh: BAD_HIGH },
         sofr: latestSofr,
         direction: dir,
         message,
@@ -348,6 +441,8 @@ export async function GET(request) {
       grossBasisTicks: decimalToTicks(latest.basis),
       impliedRepo: latest.irr != null ? Number(latest.irr.toFixed(3)) : null,
       futuresShift, // 선물 종가 날짜 보정 (거래일 단위)
+      futuresTime: alignHour, // 선물 가격 시각 (뉴욕시간, null이면 일별 종가)
+      timingScores, // 시각 후보별 들쭉날쭉한 정도 (작을수록 현물과 시각이 잘 맞음)
       runnerUp: latest.runnerUp ?? null,
       gap: latest.gap != null ? Number(latest.gap.toFixed(3)) : null,
       history: history.map((h) => ({

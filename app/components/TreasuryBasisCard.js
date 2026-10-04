@@ -217,7 +217,7 @@ export default function TreasuryBasisCard() {
 
           <div style={styles.row}>
             <span style={styles.label2}>
-              선물가격 ({data.futuresSymbol}{data.priceDate ? `, ${fmtMD(data.priceDate)} 종가` : ""})
+              선물가격 ({data.futuresSymbol}{data.priceDate ? `, ${fmtMD(data.priceDate)} ${data.futuresTime != null ? `뉴욕 ${data.futuresTime}시` : "종가"}` : ""})
             </span>
             <span>{data.futuresPriceTicks}</span>
           </div>
@@ -274,7 +274,7 @@ export default function TreasuryBasisCard() {
                 </div>
               )}
               <div style={{ fontSize: 10, color: "#667085", marginTop: 4, lineHeight: 1.4 }}>
-                ±25bp 안이면 정상, 25~50bp 주의, 50bp 이상 경계. 마이너스면 레포로 돈 빌려 베이시스 거래 시 손해, 플러스면 이익. 미국 장이 끝나 확정된 종가로만 계산해서 하루에 한 번만 바뀌어요.
+                −25~+40bp면 정상(평소에도 +10~+30bp가 보통), 그 밖이면 주의, −50bp 아래나 +75bp 위면 경계. 마이너스면 레포로 돈 빌려 베이시스 거래 시 손해, 플러스면 이익. 미국 장이 끝나 확정된 종가로만 계산해서 하루에 한 번만 바뀌어요.
               </div>
             </div>
           )}
