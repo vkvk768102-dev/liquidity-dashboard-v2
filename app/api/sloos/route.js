@@ -1,5 +1,8 @@
 // 17번 카드용: SLOOS (연준 대출 담당자 설문) - 은행 대출 기준 강화/완화
-// 데이터 출처: FRED (세인트루이스 연준) 공개 CSV. API 키 불필요.
+// 데이터 출처: FRED (세인트루이스 연준).
+//   - Vercel 서버에서는 FRED 공개 CSV 접속이 끊겨서(fetch failed), 공식 API + 키를 먼저 씁니다
+//   - Vercel 환경변수 FRED_API_KEY 필요 (market-dashboard에서 쓰는 것과 같은 키)
+//   - 키가 없으면 공개 CSV를 시도합니다 (내 컴퓨터에서 npm run dev 할 때는 CSV로도 됩니다)
 // 지표: DRTSCILM = 중대형 기업 대상 상업·산업(C&I) 대출 기준을 "강화했다"는 은행 비율 - "완화했다"는 은행 비율 (%)
 //   - 0보다 크면: 강화한 은행이 더 많음 (대출 문턱이 높아지는 중)
 //   - 0보다 작으면: 완화한 은행이 더 많음 (평상시)
@@ -33,6 +36,7 @@ async function fetchFromCsv() {
   const res = await fetch(CSV_URL, {
     cache: "no-store",
     headers: { "User-Agent": "Mozilla/5.0 (liquidity-dashboard)" },
+    signal: AbortSignal.timeout(6000), // 응답이 없으면 6초 뒤 포기
   });
   if (!res.ok) throw new Error(`FRED CSV 응답 오류 (${res.status})`);
   const points = parseCsv(await res.text());
@@ -40,11 +44,11 @@ async function fetchFromCsv() {
   return points;
 }
 
-// 예비: CSV가 막힐 때만 사용. Vercel 환경변수에 FRED_API_KEY가 있을 때만 작동
+// 공식 API: Vercel 환경변수에 FRED_API_KEY가 있을 때 사용
 async function fetchFromApi(apiKey) {
   const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${SERIES}&api_key=${apiKey}&file_type=json`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`FRED API 응답 오류 (${res.status})`);
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`FRED API 응답 오류 (${res.status}). FRED_API_KEY 값이 맞는지 확인하세요`);
   const json = await res.json();
   const points = (json.observations || [])
     .map((o) => ({ date: o.date, value: parseFloat(o.value) }))
@@ -55,12 +59,27 @@ async function fetchFromApi(apiKey) {
 
 export async function GET() {
   try {
+    const apiKey = (process.env.FRED_API_KEY || "").trim();
     let points;
-    try {
-      points = await fetchFromCsv();
-    } catch (e) {
-      if (!process.env.FRED_API_KEY) throw e;
-      points = await fetchFromApi(process.env.FRED_API_KEY);
+    if (apiKey) {
+      // 키가 있으면 공식 API 먼저, 실패하면 CSV
+      try {
+        points = await fetchFromApi(apiKey);
+      } catch (apiError) {
+        try {
+          points = await fetchFromCsv();
+        } catch {
+          throw apiError;
+        }
+      }
+    } else {
+      try {
+        points = await fetchFromCsv();
+      } catch (e) {
+        throw new Error(
+          `FRED 접속 실패 (${e.message}). Vercel 프로젝트 설정의 Environment Variables에 FRED_API_KEY를 추가한 뒤 다시 배포해 주세요`
+        );
+      }
     }
     points.sort((a, b) => (a.date < b.date ? -1 : 1));
 
