@@ -13,6 +13,7 @@ import PdBalanceSheetCard from "./components/PdBalanceSheetCard";
 import CftcTreasuryCard from "./components/CftcTreasuryCard";
 import FailsCard from "./components/FailsCard";
 import DealerNetPositionTrendCard from "./components/DealerNetPositionTrendCard";
+import SloosCard from "./components/SloosCard";
 
 function fmtManGyeyak(contracts) {
   const man = contracts / 10000;
@@ -89,6 +90,7 @@ export default function Home() {
   const [treasury10y, setTreasury10y] = useState(EMPTY);
   const [treasuryBasis, setTreasuryBasis] = useState(EMPTY);
   const [auctionTail, setAuctionTail] = useState(EMPTY);
+  const [sloos, setSloos] = useState(EMPTY);
   const [swapSpreadBp, setSwapSpreadBp] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
@@ -102,6 +104,7 @@ export default function Home() {
     setTreasury10y((s) => ({ ...s, loading: true, error: null }));
     setTreasuryBasis((s) => ({ ...s, loading: true, error: null }));
     setAuctionTail((s) => ({ ...s, loading: true, error: null }));
+    setSloos((s) => ({ ...s, loading: true, error: null }));
 
     const jobs = [
       ["repo-rate", setSofr],
@@ -112,6 +115,7 @@ export default function Home() {
       ["tri-party-volume", setTriparty],
       ["treasury-10y", setTreasury10y],
       ["treasury-auction-tail", setAuctionTail],
+      ["sloos", setSloos],
     ];
 
     await Promise.all(
@@ -255,6 +259,10 @@ export default function Home() {
     }
   }
 
+  // SLOOS (17번): 0선 위 2분기 연속 이상(2단계·3단계)이면 경계 신호 1개로 계산
+  const sloosData = sloos.data;
+  const sloosBad = sloosData?.stage != null && sloosData.stage >= 2;
+
   const badFlags = [
     sofrChangeUp === true,
     basisData?.latestValue != null && Math.abs(basisData.latestValue) > 0.1,
@@ -265,11 +273,13 @@ export default function Home() {
     treasuryBasisBad,
     swapSpreadBp != null && swapSpreadBp < 0,
     auctionTailLoaded && auctionTailBad,
+    sloosBad,
   ];
   const loadedCount =
     [sofrData, basisData, pdbsData, dealerData, tffData, tripartyData, treasuryBasisData].filter(Boolean).length +
     (swapSpreadBp != null ? 1 : 0) +
-    (auctionTailLoaded ? 1 : 0);
+    (auctionTailLoaded ? 1 : 0) +
+    (sloosData ? 1 : 0);
   const badCount = badFlags.filter(Boolean).length;
   const signalColor = loadedCount === 0 ? "#9ca3af" : badCount >= 3 ? "#dc2626" : badCount >= 1 ? "#eab308" : "#16a34a";
   const signalLabel = loadedCount === 0 ? "확인 중" : badCount >= 3 ? "위험 / 스트레스" : badCount >= 1 ? "주의 / 경계" : "정상 / 안정";
@@ -429,6 +439,7 @@ export default function Home() {
         <CftcTreasuryCard />
         <FailsCard />
         <DealerNetPositionTrendCard />
+        <SloosCard />
 
 
         <div
@@ -458,14 +469,14 @@ export default function Home() {
             <div><span style={{ color: "#dc2626" }}>●</span> 빨강: 위험 / 스트레스</div>
           </div>
           <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 10 }}>
-            1~9번 지표와 Swap Spread, Treasury Auction Tail을 포함한 전체 경계 신호 개수를 기준으로 자동 계산됩니다.
+            1~9번 지표와 Swap Spread, Treasury Auction Tail, SLOOS(17번, 0선 위 2분기 연속 이상이면 경계)를 포함한 전체 경계 신호 개수를 기준으로 자동 계산됩니다.
           </div>
         </div>
       </div>
 
       <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 18, lineHeight: 1.6 }}>
         * 데이터 출처: NY Fed 공식 Markets Data API (SOFR/TGCR 금리, Primary Dealer 통계),
-        CFTC 공식 API (publicreporting.cftc.gov), NY Fed 증권대차(Securities Lending) 결과, 미국 재무부 공식 일별 금리 CSV, helious.io (국채 경매 테일, 무료). 별도 API 키 불필요.
+        CFTC 공식 API (publicreporting.cftc.gov), NY Fed 증권대차(Securities Lending) 결과, 미국 재무부 공식 일별 금리 CSV, helious.io (국채 경매 테일, 무료), FRED 공개 CSV (SLOOS 은행 대출 기준). 별도 API 키 불필요.
         <br />
         * &quot;레버리지 배수&quot;와 &quot;프라이머리 딜러 총자산&quot;은 공식 발표 지표가
         아니라 공개 데이터를 조합해 계산한 프록시(근사) 지표입니다.
