@@ -12,6 +12,7 @@ const NAVY = "#1e3a8a";
 const RED = "#dc2626";
 const GREEN = "#16a34a";
 const AMBER = "#d97706";
+const ZERO = "#6b7280"; // 값이 정확히 0인 분기 표시용
 const RECENT_QUARTERS = 20; // "최근 5년" = 20분기
 
 const STAGES = [
@@ -39,32 +40,37 @@ function fmtDiff(v) {
   return `${v >= 0 ? "+" : "-"}${Math.abs(v).toFixed(1)}%p`;
 }
 
-function StageSteps({ stage }) {
+function StageSteps({ stage, watch }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
       {STAGES.map((s) => {
         const on = s.n === stage;
+        // 1단계지만 다음 분기를 지켜봐야 하는 경우는 노란색으로 표시
+        const color = on && watch ? AMBER : s.color;
+        const bg = on && watch ? "#fffbeb" : s.bg;
         return (
           <div
             key={s.n}
             style={{
-              border: `1px solid ${on ? s.color : "#e5e7eb"}`,
-              background: on ? s.bg : "#fff",
+              border: `1px solid ${on ? color : "#e5e7eb"}`,
+              background: on ? bg : "#fff",
               borderRadius: 10,
               padding: "8px 4px",
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 10.5, color: on ? s.color : "#9ca3af", fontWeight: 600 }}>{s.n}단계</div>
+            <div style={{ fontSize: 10.5, color: on ? color : "#9ca3af", fontWeight: 600, whiteSpace: "nowrap" }}>
+              {s.n}단계
+            </div>
             <div
               style={{
                 fontSize: 13,
                 fontWeight: on ? 800 : 600,
-                color: on ? s.color : "#9ca3af",
+                color: on ? color : "#9ca3af",
                 whiteSpace: "nowrap",
               }}
             >
-              {s.name}
+              {on && watch ? "확인 필요" : s.name}
             </div>
           </div>
         );
@@ -152,6 +158,9 @@ function BarChart({ points, streakAbove, showAll }) {
       {points.map((p, i) => {
         const y = yAt(p.value);
         const up = p.value > 0;
+        if (p.value === 0) {
+          return <circle key={p.date} cx={xAt(i) + barW / 2} cy={y0} r={Math.min(Math.max(barW / 2, 1.2), 3.2)} fill={ZERO} />;
+        }
         return (
           <rect
             key={p.date}
@@ -225,7 +234,28 @@ export default function SloosCard() {
   const stageInfo = STAGES[stage - 1];
   // 0선 위로 처음 올라온 분기는 아직 1단계지만 "지켜볼 것"으로 노란색 표시
   const firstCross = stage === 1 && n === 1;
-  const tone = firstCross ? AMBER : stageInfo.color;
+
+  // "0선 아래"(마이너스)와 "0선에 걸침"(정확히 0)을 구분해서 셉니다
+  const pts = data?.points ?? [];
+  const onZero = data != null && data.latestValue === 0;
+  let belowRun = 0; // 최신 분기부터 연속으로 마이너스인 분기 수
+  for (let i = pts.length - 1; i >= 0 && pts[i].value < 0; i--) belowRun++;
+  let prevAboveRun = 0; // 최신 값이 0일 때, 그 직전까지 연속으로 0선 위였던 분기 수
+  if (onZero) {
+    for (let i = pts.length - 2; i >= 0 && pts[i].value > 0; i--) prevAboveRun++;
+  }
+  // 긴축(2분기 이상 연속 0선 위) 직후 0에 걸친 경우: 풀린 건지 아직 모르므로 "확인 필요"
+  const zeroAfterTightening = onZero && prevAboveRun >= 2;
+  const watch = firstCross || zeroAfterTightening;
+  const tone = watch ? AMBER : stageInfo.color;
+  const positionLabel =
+    n > 0
+      ? `${quarterLabel(data?.streakStartDate)}부터`
+      : onZero
+      ? prevAboveRun > 0
+        ? `이번엔 0선에 걸침 · 직전 ${prevAboveRun}분기는 0선 위`
+        : "이번 분기는 0선에 걸침"
+      : `0선 아래 ${belowRun}분기째`;
 
   let interpretation = "";
   if (data) {
@@ -242,8 +272,12 @@ export default function SloosCard() {
       interpretation = `0선 위 2분기 연속. 은행이 내부 대출 기준을 바꾼 것으로 볼 수 있는 구간 (대출이 심사 대상이 됨). 이 시점의 증시는 아직 강세인 경우가 많음.${strength}`;
     } else if (firstCross) {
       interpretation = "0선 위로 올라온 첫 분기. 잠깐 튄 것인지 다음 분기에도 유지되는지 확인 필요";
+    } else if (zeroAfterTightening) {
+      interpretation = `이번 값이 정확히 0 (강화한 은행 = 완화한 은행). 0선 아래로 내려간 것은 아니고, 직전까지 ${prevAboveRun}분기 연속 0선 위였음. 조이기가 풀리는 중인지 다음 분기에 확인 필요`;
+    } else if (onZero) {
+      interpretation = "이번 값이 정확히 0 (강화한 은행 = 완화한 은행). 조이는 은행이 더 많지 않은 상태";
     } else {
-      interpretation = `0선 이하 ${data.streakBelow}분기째. 대출 기준을 조이는 은행이 더 많지 않은 평상시 상태`;
+      interpretation = `0선 아래 ${belowRun}분기째. 완화한 은행이 더 많은 평상시 상태`;
     }
   }
   const arrow = "●";
@@ -312,7 +346,7 @@ export default function SloosCard() {
                 <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 4 }}>
                   최신 값 ({quarterLabel(data.latestDate)})
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: data.latestValue > 0 ? RED : GREEN }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: data.latestValue > 0 ? RED : data.latestValue < 0 ? GREEN : "#111827" }}>
                   {fmtVal(data.latestValue)}
                 </div>
                 <div style={{ fontSize: 11.5, color: "#6b7280", fontWeight: 600 }}>
@@ -331,12 +365,12 @@ export default function SloosCard() {
                 <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 4 }}>0선 위 연속</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: n > 0 ? tone : "#111827" }}>{n}분기</div>
                 <div style={{ fontSize: 11.5, color: "#6b7280", fontWeight: 600 }}>
-                  {n > 0 ? `${quarterLabel(data.streakStartDate)}부터` : `0선 이하 ${data.streakBelow}분기째`}
+                  {positionLabel}
                 </div>
               </div>
             </div>
 
-            <StageSteps stage={stage} />
+            <StageSteps stage={stage} watch={watch} />
 
             <div>
               <div
@@ -362,13 +396,14 @@ export default function SloosCard() {
               <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6b7280", marginTop: 2, flexWrap: "wrap" }}>
                 <span><span style={{ color: RED }}>■</span> 0선 위: 강화한 은행이 더 많음</span>
                 <span><span style={{ color: GREEN }}>■</span> 0선 아래: 완화한 은행이 더 많음</span>
+                <span><span style={{ color: ZERO }}>●</span> 정확히 0: 강화 = 완화</span>
               </div>
             </div>
 
             <div style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, lineHeight: 1.5 }}>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>해석</div>
               <div style={{ color: tone, fontWeight: 700 }}>
-                {arrow} {stageInfo.n}단계 {stageInfo.name}: {interpretation}
+                {arrow} {stageInfo.n}단계 {watch ? "(확인 필요)" : stageInfo.name}: {interpretation}
               </div>
               <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 6, lineHeight: 1.6 }}>
                 0선 위 2분기 연속이면 2단계, 3분기 이상이면 3단계로 표시합니다. 분기에 한 번(2·5·8·11월 초)만 새
