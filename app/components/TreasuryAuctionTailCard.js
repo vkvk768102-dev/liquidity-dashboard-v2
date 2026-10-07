@@ -81,6 +81,9 @@ export default function TreasuryAuctionTailCard() {
         <div style={{ fontWeight: 700, fontSize: 14 }}>7. Treasury Auction Tail (최근 20-30년물)</div>
         <span style={{ fontSize: 10.5, color: "#9ca3af" }}>자동 갱신</span>
       </div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#b45309", marginTop: 6, lineHeight: 1.4 }}>
+        시장 예상보다 얼마나 비싸게 받아들이는가?
+      </div>
       <div style={{ fontSize: 11.5, color: "#6b7280", margin: "4px 0 12px" }}>
         국채 입찰 응찰률 꼬리 (낙찰금리 - 발행금리). 매월 20년물/30년물 경매 결과를 자동으로 반영합니다.
       </div>
