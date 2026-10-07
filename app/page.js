@@ -331,6 +331,7 @@ export default function Home() {
           sparklineColor="#16a34a"
           interpretation={sofrInterp}
           interpretationBad={sofrChangeUp === true}
+          extraItems={sofrData?.extraRates?.map((r) => ({ label: r.key, value: fmtPct(r.value) }))}
         />
 
         <IndicatorCard

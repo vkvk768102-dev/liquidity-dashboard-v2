@@ -68,6 +68,7 @@ export default function IndicatorCard({
   sparklineColor,
   interpretation,
   interpretationBad,
+  extraItems,
 }) {
   return (
     <div
@@ -141,6 +142,32 @@ export default function IndicatorCard({
                 )}
               </div>
             </div>
+
+            {extraItems && extraItems.length > 0 && (
+              <div style={{ display: "flex", gap: 6 }}>
+                {extraItems.map((it) => (
+                  <div
+                    key={it.label}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      background: "#f9fafb",
+                      border: "1px solid #eef0f2",
+                      borderRadius: 8,
+                      padding: "7px 8px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      gap: 4,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>{it.label}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700 }}>{it.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div>
               <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 4 }}>
