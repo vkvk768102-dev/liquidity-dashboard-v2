@@ -4,9 +4,22 @@
 import { useEffect, useState } from "react";
 
 const TENORS = [
-  { key: "20Y", label: "20년물" },
-  { key: "30Y", label: "30년물" },
+  { key: "2Y", label: "2년물", long: false },
+  { key: "5Y", label: "5년물", long: false },
+  { key: "10Y", label: "10년물", long: true },
+  { key: "20Y", label: "20년물", long: true },
+  { key: "30Y", label: "30년물", long: true },
 ];
+
+const WEAK_BP = 1.0; // 테일이 이 이상이면 "수요 약함"
+const BIG_BP = 2.0; // 이 이상이면 "수요 부진"
+const LEVEL = {
+  ok: { label: "정상", color: "#16a34a" },
+  watch: { label: "주의", color: "#d97706" },
+  bad: { label: "경계", color: "#dc2626" },
+};
+
+const joinLabels = (list) => list.map((r) => r.label).join("·");
 
 async function fetchJson(url) {
   const res = await fetch(url, { cache: "no-store" });
@@ -35,37 +48,43 @@ export default function TreasuryAuctionTailCard() {
   }, []);
 
   const data = state.data;
-  const rows = TENORS.map(({ key, label }) => ({
+  const rows = TENORS.map(({ key, label, long }) => ({
     key,
     label,
+    long,
     latest: data?.[key]?.latest ?? null,
     prev: data?.[key]?.prev ?? null,
   }));
 
-  const latestVals = rows.filter((r) => r.latest).map((r) => r.latest.tailBp);
-  const prevVals = rows.filter((r) => r.prev).map((r) => r.prev.tailBp);
+  const live = rows.filter((r) => r.latest?.tailBp != null);
+  const hasLatest = live.length > 0;
 
+  // 종합 해석
+  const weak = live.filter((r) => r.latest.tailBp >= WEAK_BP);
+  const big = live.filter((r) => r.latest.tailBp >= BIG_BP);
+  const withPrev = live.filter((r) => r.prev?.tailBp != null);
+  const widened = withPrev.filter((r) => r.latest.tailBp - r.prev.tailBp >= 0.05);
+  const narrowed = withPrev.filter((r) => r.prev.tailBp - r.latest.tailBp >= 0.05);
+
+  let level = "ok";
   let interpretation = "데이터를 불러오는 중입니다";
-  let bad = false;
-  let hasLatest = latestVals.length > 0;
+  let extra = [];
 
   if (state.error) {
     interpretation = `데이터를 가져오지 못했습니다 (${state.error})`;
-  } else if (hasLatest && prevVals.length) {
-    const latestAvg = latestVals.reduce((a, b) => a + b, 0) / latestVals.length;
-    const prevAvg = prevVals.reduce((a, b) => a + b, 0) / prevVals.length;
-    if (latestAvg > prevAvg) {
-      interpretation = "TAIL 확대. 수요 약화, 프리미엄 요구 증가";
-      bad = true;
-    } else if (latestAvg < prevAvg) {
-      interpretation = "TAIL 축소. 수요 견조";
-    } else {
-      interpretation = "전회 경매와 동일한 수준";
-    }
   } else if (hasLatest) {
-    const avg = latestVals.reduce((a, b) => a + b, 0) / latestVals.length;
-    interpretation = avg >= 2 ? "TAIL 다소 높은 편. 수요 약화 가능성" : "TAIL 낮은 편. 수요 양호";
-    bad = avg >= 2;
+    level = big.length >= 2 || weak.length >= 3 ? "bad" : weak.length >= 1 ? "watch" : "ok";
+    const weakLong = weak.filter((r) => r.long);
+    if (level === "ok") {
+      interpretation = `${live.length}개 만기 모두 테일 ${WEAK_BP}bp 미만. 국채 수요 양호`;
+    } else if (level === "watch") {
+      interpretation = `${joinLabels(weak)}에서 테일. 해당 만기 수요 약함`;
+    } else {
+      interpretation = `여러 만기(${joinLabels(weak)})에서 테일. 국채 수요 전반 약함`;
+    }
+    if (weakLong.length) extra.push(`장기물(${joinLabels(weakLong)}) 약세 → 장기금리 상승 압력, 성장주 부담`);
+    else if (weak.length) extra.push("단기·중기물 약세 → 물량 부담이나 금리 인하 기대 약화일 수 있음");
+    if (withPrev.length) extra.push(`직전 입찰 대비 테일 확대 ${widened.length}개, 축소 ${narrowed.length}개`);
   }
 
   return (
@@ -77,15 +96,15 @@ export default function TreasuryAuctionTailCard() {
         padding: 16,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>7. Treasury Auction Tail (최근 20-30년물)</div>
-        <span style={{ fontSize: 10.5, color: "#9ca3af" }}>자동 갱신</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>7. Treasury Auction Tail (2·5·10·20·30년물)</div>
+        <span style={{ fontSize: 10.5, color: "#9ca3af", whiteSpace: "nowrap", flexShrink: 0 }}>자동 갱신</span>
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 700, color: "#b45309", marginTop: 6, lineHeight: 1.4 }}>
         시장 예상보다 얼마나 비싸게 받아들이는가?
       </div>
       <div style={{ fontSize: 11.5, color: "#6b7280", margin: "4px 0 12px" }}>
-        국채 입찰 응찰률 꼬리 (낙찰금리 - 발행금리). 매월 20년물/30년물 경매 결과를 자동으로 반영합니다.
+        국채 입찰 테일 (낙찰금리 − 입찰 직전 시장금리). 매월 2·5·10·20·30년물 경매 결과를 자동으로 반영합니다.
       </div>
 
       {state.loading ? (
@@ -110,7 +129,14 @@ export default function TreasuryAuctionTailCard() {
                     padding: "6px 4px",
                     textAlign: "center",
                     fontWeight: 700,
-                    color: r.latest?.tailBp != null && r.latest.tailBp < 0 ? "#16a34a" : "#111827",
+                    color:
+                      r.latest?.tailBp == null
+                        ? "#111827"
+                        : r.latest.tailBp < 0
+                        ? "#16a34a"
+                        : r.latest.tailBp >= WEAK_BP
+                        ? "#dc2626"
+                        : "#111827",
                   }}
                 >
                   {r.latest?.tailBp != null ? r.latest.tailBp.toFixed(1) : "-"}
@@ -124,9 +150,21 @@ export default function TreasuryAuctionTailCard() {
         </table>
       )}
 
-      <div style={{ fontSize: 11.5, color: bad ? "#dc2626" : "#374151" }}>
-        {bad ? "▲ " : hasLatest ? "▼ " : ""}
-        {interpretation}
+      <div style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.55 }}>
+        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>종합 해석</div>
+        <div style={{ color: hasLatest && !state.error ? LEVEL[level].color : state.error ? "#dc2626" : "#374151", fontWeight: 700 }}>
+          {hasLatest && !state.error ? `[${LEVEL[level].label}] ` : ""}
+          {interpretation}
+        </div>
+        {extra.map((line) => (
+          <div key={line} style={{ color: "#374151", marginTop: 3 }}>
+            · {line}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 8 }}>
+        1bp 이상 테일이 1개면 주의, 3개 이상(또는 2bp 이상 2개)이면 경계.
       </div>
 
       <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 10 }}>
