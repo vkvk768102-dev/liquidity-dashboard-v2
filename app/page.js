@@ -388,6 +388,7 @@ export default function Home() {
         <IndicatorCard
           number={6}
           title="CFTC TFF Positioning (10년물)"
+          topNote="누가 어느 방향으로 얼마나 레버리지를 쌓았는가?"
           subtitle="레버리지드펀드 10년물 국채선물 순포지션 (계약 수)"
           loading={tff.loading}
           error={tff.error}
