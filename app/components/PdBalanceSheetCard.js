@@ -166,6 +166,9 @@ export default function PdBalanceSheetCard({ loading, error, data, interpretatio
           </span>
           <span style={{ fontWeight: 700, fontSize: 15 }}>Primary Dealer Balance Sheet</span>
         </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fde68a", marginTop: 6, lineHeight: 1.4 }}>
+          국채를 받아줄 딜러에게 공간이 남았는지 확인
+        </div>
         <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 4 }}>프라이머리 딜러(증권사) 보유 자산</div>
       </div>
 
