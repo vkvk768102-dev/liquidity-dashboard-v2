@@ -318,6 +318,7 @@ export default function Home() {
         <IndicatorCard
           number={1}
           title="Repo Rate (SOFR)"
+          topNote="주식보다 먼저 돈 빌리는 비용을 보는 지표"
           subtitle="무위험 단기 자금시장의 실제 조달금리"
           loading={sofr.loading}
           error={sofr.error}

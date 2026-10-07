@@ -69,6 +69,7 @@ export default function IndicatorCard({
   interpretation,
   interpretationBad,
   extraItems,
+  topNote,
 }) {
   return (
     <div
@@ -101,6 +102,9 @@ export default function IndicatorCard({
           </span>
           <span style={{ fontWeight: 700, fontSize: 15 }}>{title}</span>
         </div>
+        {topNote && (
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fde68a", marginTop: 6, lineHeight: 1.4 }}>{topNote}</div>
+        )}
         <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 4 }}>{subtitle}</div>
       </div>
 
