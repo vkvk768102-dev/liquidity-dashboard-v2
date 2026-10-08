@@ -414,6 +414,7 @@ export default function Home() {
         <IndicatorCard
           number={9}
           title="Collateral (GCF Repo)"
+          topNote="담보가치와 유동성을 믿을 수 있는가?"
           subtitle="GCF 레포 일일 잔액 (담보 시장 유동성 지표, 만기 구간 합계)"
           loading={triparty.loading}
           error={triparty.error}
