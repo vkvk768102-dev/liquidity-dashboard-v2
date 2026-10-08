@@ -13,6 +13,8 @@ const TENORS = [
 
 const WEAK_BP = 1.0; // 테일이 이 이상이면 "수요 약함"
 const BIG_BP = 2.0; // 이 이상이면 "수요 부진"
+const BTC_GAP = 0.05; // 응찰률이 직전 6회 평균보다 이만큼 높으면 "강함", 낮으면 "약함"
+const fmtMd = (d) => (d ? d.slice(5).replace("-", "/") : "-");
 const LEVEL = {
   ok: { label: "정상", color: "#16a34a" },
   watch: { label: "주의", color: "#d97706" },
@@ -48,13 +50,14 @@ export default function TreasuryAuctionTailCard() {
   }, []);
 
   const data = state.data;
-  const rows = TENORS.map(({ key, label, long }) => ({
-    key,
-    label,
-    long,
-    latest: data?.[key]?.latest ?? null,
-    prev: data?.[key]?.prev ?? null,
-  }));
+  const rows = TENORS.map(({ key, label, long }) => {
+    const latest = data?.[key]?.latest ?? null;
+    const btc = latest?.bidToCover ?? null;
+    const btcAvg = data?.[key]?.btcAvg ?? null;
+    // 응찰률이 직전 6회 평균보다 얼마나 높은지(+) 낮은지(-)
+    const btcDiff = btc != null && btcAvg != null ? Math.round((btc - btcAvg) * 100) / 100 : null;
+    return { key, label, long, latest, prev: data?.[key]?.prev ?? null, btc, btcAvg, btcDiff };
+  });
 
   const live = rows.filter((r) => r.latest?.tailBp != null);
   const hasLatest = live.length > 0;
@@ -87,6 +90,64 @@ export default function TreasuryAuctionTailCard() {
     if (withPrev.length) extra.push(`직전 입찰 대비 테일 확대 ${widened.length}개, 축소 ${narrowed.length}개`);
   }
 
+  // 응찰률 (Bid-to-Cover): 직전 6회 평균과 비교
+  const btcLive = live.filter((r) => r.btcDiff != null);
+  const btcStrong = btcLive.filter((r) => r.btcDiff >= BTC_GAP);
+  const btcWeak = btcLive.filter((r) => r.btcDiff <= -BTC_GAP);
+  // 가장 최근에 열린 입찰
+  const newest = live.length ? [...live].sort((a, b) => (a.latest.date < b.latest.date ? 1 : -1))[0] : null;
+
+  if (!state.error && btcLive.length) {
+    extra.push(`응찰률: 평균보다 높음 ${joinLabels(btcStrong) || "없음"} / 낮음 ${joinLabels(btcWeak) || "없음"}`);
+  }
+
+  // 주식시장과 연결한 해석: 테일과 응찰률을 함께 봄
+  const demandStrong = live.filter((r) => r.latest.tailBp < WEAK_BP && r.btcDiff != null && r.btcDiff >= BTC_GAP);
+  const demandWeak = live.filter((r) => r.latest.tailBp >= WEAK_BP || (r.btcDiff != null && r.btcDiff <= -BTC_GAP));
+  let stock = null;
+  if (!state.error && hasLatest && btcLive.length) {
+    if (demandStrong.length && !demandWeak.length) {
+      stock = {
+        color: "#16a34a",
+        head: `국채가 잘 팔리는 중 (${joinLabels(demandStrong)})`,
+        lines: [
+          "장기금리가 급등할 위험이 줄어 주식, 특히 성장주·기술주의 금리 부담이 완화됩니다.",
+          "단, 주가가 빠지는 날 국채가 잘 팔렸다면 안전자산으로 피신한 것일 수 있으니 주가 방향과 함께 보세요.",
+        ],
+      };
+    } else if (demandWeak.length && !demandStrong.length) {
+      stock = {
+        color: "#dc2626",
+        head: `국채가 잘 안 팔리는 중 (${joinLabels(demandWeak)})`,
+        lines: [
+          "금리를 더 줘야 팔리므로 장기금리 상승 압력이 생깁니다.",
+          "주식 할인율이 올라 성장주·고PER주에 부담입니다.",
+        ],
+      };
+    } else if (demandStrong.length && demandWeak.length) {
+      const newestStrong = newest && demandStrong.some((r) => r.key === newest.key);
+      const newestWeak = newest && demandWeak.some((r) => r.key === newest.key);
+      stock = {
+        color: "#d97706",
+        head: `만기별로 엇갈림: 잘 팔림 ${joinLabels(demandStrong)} / 부진 ${joinLabels(demandWeak)}`,
+        lines: [
+          newestStrong
+            ? `가장 최근 입찰(${newest.label})이 강해 수요가 회복되는 흐름일 수 있습니다. 주식의 금리 부담은 다소 완화.`
+            : newestWeak
+            ? `가장 최근 입찰(${newest.label})이 부진해 금리 상승 압력이 남아 있습니다. 주식에는 부담.`
+            : "금리 방향에 주는 신호가 뚜렷하지 않습니다. 주식에는 중립.",
+          "다음 입찰에서도 같은 방향이 이어지는지 확인하세요.",
+        ],
+      };
+    } else {
+      stock = {
+        color: "#374151",
+        head: "응찰률·테일 모두 평소 수준",
+        lines: ["국채 수요가 주식시장에 주는 금리 신호는 중립입니다."],
+      };
+    }
+  }
+
   return (
     <div
       style={{
@@ -104,7 +165,7 @@ export default function TreasuryAuctionTailCard() {
         시장 예상보다 얼마나 비싸게 받아들이는가?
       </div>
       <div style={{ fontSize: 11.5, color: "#6b7280", margin: "4px 0 12px" }}>
-        국채 입찰 테일 (낙찰금리 − 입찰 직전 시장금리). 매월 2·5·10·20·30년물 경매 결과를 자동으로 반영합니다.
+        국채 입찰 테일 (낙찰금리 − 입찰 직전 시장금리)과 응찰률 (응찰액 ÷ 발행액). 매월 2·5·10·20·30년물 경매 결과를 자동으로 반영합니다.
       </div>
 
       {state.loading ? (
@@ -117,13 +178,14 @@ export default function TreasuryAuctionTailCard() {
               <th style={{ padding: "6px 4px", textAlign: "center" }}>최근 입찰일</th>
               <th style={{ padding: "6px 4px", textAlign: "center" }}>TAIL (bp)</th>
               <th style={{ padding: "6px 4px", textAlign: "center" }}>직전 입찰 TAIL (bp)</th>
+              <th style={{ padding: "6px 4px", textAlign: "center" }}>응찰률 (배)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.key} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                <td style={{ padding: "6px 4px", textAlign: "center", fontWeight: 600 }}>{r.label}</td>
-                <td style={{ padding: "6px 4px", textAlign: "center" }}>{r.latest?.date ?? "-"}</td>
+                <td style={{ padding: "6px 4px", textAlign: "center", fontWeight: 600, whiteSpace: "nowrap" }}>{r.label}</td>
+                <td style={{ padding: "6px 4px", textAlign: "center", whiteSpace: "nowrap" }}>{r.latest?.date ?? "-"}</td>
                 <td
                   style={{
                     padding: "6px 4px",
@@ -144,6 +206,26 @@ export default function TreasuryAuctionTailCard() {
                 <td style={{ padding: "6px 4px", textAlign: "center", color: "#6b7280" }}>
                   {r.prev?.tailBp != null ? r.prev.tailBp.toFixed(1) : "-"}
                 </td>
+                <td style={{ padding: "6px 4px", textAlign: "center", lineHeight: 1.25 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color:
+                        r.btcDiff == null
+                          ? "#111827"
+                          : r.btcDiff >= BTC_GAP
+                          ? "#16a34a"
+                          : r.btcDiff <= -BTC_GAP
+                          ? "#dc2626"
+                          : "#111827",
+                    }}
+                  >
+                    {r.btc != null ? r.btc.toFixed(2) : "-"}
+                  </div>
+                  {r.btcAvg != null && (
+                    <div style={{ fontSize: 10, color: "#9ca3af", whiteSpace: "nowrap" }}>평균 {r.btcAvg.toFixed(2)}</div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -163,8 +245,30 @@ export default function TreasuryAuctionTailCard() {
         ))}
       </div>
 
+      {stock && (
+        <div style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.55, marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>주식시장과 연결해 보면</div>
+          <div style={{ color: stock.color, fontWeight: 700 }}>{stock.head}</div>
+          {newest && newest.btc != null && (
+            <div style={{ color: "#374151", marginTop: 3 }}>
+              · 가장 최근 입찰 {newest.label}({fmtMd(newest.latest.date)}): 응찰률 {newest.btc.toFixed(2)}배
+              {newest.btcAvg != null ? ` (평균 ${newest.btcAvg.toFixed(2)}배)` : ""}, 테일 {newest.latest.tailBp.toFixed(1)}bp
+              {newest.latest.highYield != null ? `, 낙찰금리 ${newest.latest.highYield.toFixed(2)}%` : ""}
+            </div>
+          )}
+          {stock.lines.map((line) => (
+            <div key={line} style={{ color: "#374151", marginTop: 3 }}>
+              · {line}
+            </div>
+          ))}
+          <div style={{ color: "#6b7280", marginTop: 3 }}>
+            · 응찰률이 높다는 건 &quot;그 금리면 사겠다&quot;는 수요가 많다는 뜻입니다. 낙찰금리 자체가 높으면 주식 부담은 남습니다.
+          </div>
+        </div>
+      )}
+
       <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 8 }}>
-        1bp 이상 테일이 1개면 주의, 3개 이상(또는 2bp 이상 2개)이면 경계.
+        1bp 이상 테일이 1개면 주의, 3개 이상(또는 2bp 이상 2개)이면 경계. 응찰률은 직전 6회 평균보다 0.05배 이상 높으면 초록, 낮으면 빨강.
       </div>
 
       <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 10 }}>

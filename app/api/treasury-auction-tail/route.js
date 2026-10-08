@@ -56,7 +56,18 @@ async function fetchTenor(url) {
   const withTail = rows.filter((r) => r.tailBp != null);
   const latest = withTail[0] ?? null;
   const prev = withTail[1] ?? null;
-  return { latest, prev };
+
+  // 응찰률 비교 기준: 최신 입찰 바로 앞 6회 입찰의 응찰률 평균
+  let btcAvg = null;
+  let btcAvgCount = 0;
+  if (latest) {
+    const prior = rows.filter((r) => r.date < latest.date && r.bidToCover != null).slice(0, 6);
+    btcAvgCount = prior.length;
+    if (prior.length) {
+      btcAvg = prior.reduce((sum, r) => sum + r.bidToCover, 0) / prior.length;
+    }
+  }
+  return { latest, prev, btcAvg, btcAvgCount };
 }
 
 export async function GET() {
