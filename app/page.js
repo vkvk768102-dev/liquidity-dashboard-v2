@@ -366,6 +366,7 @@ export default function Home() {
         <IndicatorCard
           number={5}
           title="Dealer Financing (자금조달 레버리지)"
+          topNote="누가 무엇을 샀는지만 보지 말고, 그걸 무슨 돈으로 들고 있는지 확인."
           subtitle="딜러의 자금조달 레버리지 지표 (프록시: 국채 레포 자금조달 ÷ 국채 순포지션)"
           loading={dealer.loading}
           error={dealer.error}
