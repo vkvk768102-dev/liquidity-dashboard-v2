@@ -14,3 +14,10 @@ html, body {
 a {
   color: inherit;
 }
+
+/* 화면이 넓어 카드가 두 줄 이상으로 나란히 놓일 때, 이 카드는 두 칸을 차지 (18번 CDS 카드) */
+@media (min-width: 602px) {
+  .card-span-2 {
+    grid-column: span 2;
+  }
+}

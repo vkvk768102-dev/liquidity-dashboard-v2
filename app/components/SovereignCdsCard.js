@@ -90,7 +90,8 @@ function UsTrendChart({ points }) {
   const cur = active != null ? coords[active] : null;
 
   return (
-    <div>
+    // 카드가 넓어져도 차트가 지나치게 커지지 않도록 최대 폭을 둠
+    <div style={{ maxWidth: 460 }}>
       <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 2, minHeight: 17 }}>
         {cur ? (
           <span>
@@ -234,17 +235,20 @@ export default function SovereignCdsCard() {
     lines.push(`하루 새 많이 오른 곳: ${movers.map((c) => `${c.name} ${signed(c.changePct)}%`).join(" · ")}`);
   }
 
-  // 카드 폭이 좁아도(약 280px) 표가 넘치지 않도록 칸 여백을 작게 둠
-  const th = { padding: "6px 2px", textAlign: "center" };
-  const td = { padding: "5px 2px", textAlign: "center" };
+  // 표를 좌우 두 개로 나눠 보여 주므로 칸 여백을 작게 두고 줄바꿈을 막음
+  const th = { padding: "6px 1px", textAlign: "center", whiteSpace: "nowrap", fontSize: 10.5 };
+  const td = { padding: "6px 1px", textAlign: "center", whiteSpace: "nowrap" };
+  const half = Math.ceil(countries.length / 2);
 
   return (
     <div
+      className="card-span-2"
       style={{
         background: "#fff",
         borderRadius: 14,
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
         padding: 16,
+        minWidth: 0,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
@@ -320,66 +324,42 @@ export default function SovereignCdsCard() {
           )}
 
           <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 4 }}>
-            주요 국가 5년 CDS{asOf ? ` (${fmtMd(asOf)} 기준)` : ""}
+            주요 국가 5년 CDS (bp{asOf ? `, ${fmtMd(asOf)} 기준` : ""})
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
-            <thead>
-              <tr style={{ background: NAVY, color: "#fff" }}>
-                <th style={{ ...th, textAlign: "left", paddingLeft: 6 }}>국가</th>
-                <th style={{ ...th, whiteSpace: "nowrap" }}>CDS (bp)</th>
-                <th style={th}>전일 대비</th>
-                <th style={th}>위험도</th>
-              </tr>
-            </thead>
-            <tbody>
-              {countries.map((c) => {
-                const g = gradeOf(c.value);
-                const stale = isStale(c);
-                const focus = c.key === "US" || c.key === "KR";
-                return (
-                  <tr key={c.key} style={{ borderBottom: "1px solid #e5e7eb", background: focus ? "#eff6ff" : "transparent" }}>
-                    <td style={{ ...td, textAlign: "left", paddingLeft: 6, fontWeight: focus ? 700 : 600, whiteSpace: "nowrap", lineHeight: 1.25 }}>
-                      {c.flag} {c.name}
-                      {stale && (
-                        <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 400 }}>{fmtMd(c.date)} 값</div>
-                      )}
-                    </td>
-                    <td style={{ ...td, fontWeight: 700, color: stale ? "#9ca3af" : "#111827" }}>{fmtBp(c.value)}</td>
-                    <td
-                      style={{
-                        ...td,
-                        whiteSpace: "nowrap",
-                        color:
-                          c.changePct == null || stale || c.changePct === 0
-                            ? "#9ca3af"
-                            : c.changePct > 0
-                            ? "#dc2626"
-                            : "#16a34a",
-                      }}
-                    >
-                      {c.changePct == null || stale ? "-" : `${signed(c.changePct)}%`}
-                    </td>
-                    <td style={td}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "1px 6px",
-                          borderRadius: 999,
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                          color: g.color,
-                          background: g.bg,
-                        }}
-                      >
-                        {g.label}
-                      </span>
-                    </td>
+          {/* 위험도가 높은 절반은 왼쪽, 낮은 절반은 오른쪽에 나란히 */}
+          <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: 4, alignItems: "start", marginBottom: 12 }}>
+            {[countries.slice(0, half), countries.slice(half)].map((list, i) => (
+              <table key={i} style={{ width: "100%", minWidth: 0, borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr style={{ background: NAVY, color: "#fff" }}>
+                    <th style={{ ...th, textAlign: "left", paddingLeft: 3 }}>국가</th>
+                    <th style={th}>CDS</th>
+                    <th style={th}>위험도</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {list.map((c) => {
+                    const g = gradeOf(c.value);
+                    const stale = isStale(c);
+                    const focus = c.key === "US" || c.key === "KR";
+                    return (
+                      <tr key={c.key} style={{ borderBottom: "1px solid #e5e7eb", background: focus ? "#eff6ff" : "transparent" }}>
+                        <td style={{ ...td, textAlign: "left", paddingLeft: 3, fontWeight: focus ? 700 : 600, lineHeight: 1.25 }}>
+                          {c.flag} {c.name}
+                          {stale && <div style={{ fontSize: 9.5, color: "#9ca3af", fontWeight: 400 }}>{fmtMd(c.date)} 값</div>}
+                        </td>
+                        <td style={{ ...td, fontWeight: 700, color: stale ? "#9ca3af" : "#111827" }}>{fmtBp(c.value)}</td>
+                        {/* 화면이 아주 좁으면 "매우 높음"만 두 줄로 접힘 */}
+                        <td style={{ ...td, fontSize: 10, fontWeight: 700, color: g.color, whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.15 }}>
+                          {g.label}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ))}
+          </div>
 
           <div style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.55 }}>
             <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>해석</div>
