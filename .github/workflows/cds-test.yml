@@ -1,0 +1,89 @@
+# 파일 위치: .github/workflows/cds-test.yml
+# 시험용: GitHub 서버에서 investing.com의 CDS 페이지를 읽을 수 있는지 확인합니다.
+# 사이트(Vercel)에는 아무 영향이 없습니다. 초록색 체크 = 읽기 성공, 빨간색 X = 막힘.
+name: CDS 자동 조회 시험
+
+on:
+  push:
+    paths:
+      - ".github/workflows/cds-test.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: investing.com 읽기 시험
+        run: |
+          cat > cds-test.mjs <<'EOF'
+          import { execFileSync } from "node:child_process";
+          import { appendFileSync } from "node:fs";
+          import { parseTable, parseHistory } from "./app/lib/cdsParse.js";
+
+          const UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+          const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+          const LANG = "en-US,en;q=0.9";
+          const PAGES = {
+            table: "https://www.investing.com/rates-bonds/world-cds",
+            history: "https://www.investing.com/rates-bonds/united-states-cds-5-years-usd-historical-data",
+          };
+
+          // 방법 1: Node 내장 fetch (지금 Vercel에서 쓰는 방식과 같음)
+          async function viaFetch(url) {
+            try {
+              const res = await fetch(url, {
+                headers: { "User-Agent": UA, Accept: ACCEPT, "Accept-Language": LANG },
+                signal: AbortSignal.timeout(20000),
+              });
+              return { status: res.status, html: res.ok ? await res.text() : "" };
+            } catch (e) {
+              return { status: `오류: ${e.message}`, html: "" };
+            }
+          }
+
+          // 방법 2: curl
+          function viaCurl(url) {
+            try {
+              const out = execFileSync(
+                "curl",
+                ["-sS", "-L", "--compressed", "-m", "20", "-A", UA, "-H", `Accept: ${ACCEPT}`, "-H", `Accept-Language: ${LANG}`, "-w", "\n%{http_code}", url],
+                { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
+              );
+              const cut = out.lastIndexOf("\n");
+              const status = Number(out.slice(cut + 1));
+              return { status, html: status === 200 ? out.slice(0, cut) : "" };
+            } catch (e) {
+              return { status: `오류: ${String(e.message).split("\n")[0]}`, html: "" };
+            }
+          }
+
+          const lines = [];
+          const say = (s) => {
+            console.log(s);
+            lines.push(s);
+          };
+
+          let passed = false;
+          for (const [name, get] of [["fetch", viaFetch], ["curl", viaCurl]]) {
+            const t = await get(PAGES.table);
+            const h = await get(PAGES.history);
+            const rows = t.html ? parseTable(t.html) : new Map();
+            const hist = h.html ? parseHistory(h.html) : [];
+            const ok = rows.size >= 5 && hist.length >= 3;
+            if (ok) passed = true;
+            say(`### 방법: ${name} → ${ok ? "성공" : "실패"}`);
+            say(`- 국가별 표: 응답 ${t.status}, 읽은 국가 ${rows.size}개${rows.get("US") ? `, 미국 ${rows.get("US").value}bp (${rows.get("US").date})` : ""}`);
+            say(`- 미국 추이: 응답 ${h.status}, 읽은 날짜 ${hist.length}개${hist.length ? `, 마지막 ${hist[hist.length - 1].date} = ${hist[hist.length - 1].value}bp` : ""}`);
+            say("");
+          }
+          say(passed ? "## 결과: 성공 (GitHub 서버에서 읽을 수 있음)" : "## 결과: 실패 (GitHub 서버도 막힘)");
+          if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          process.exit(passed ? 0 : 1);
+          EOF
+          node cds-test.mjs
