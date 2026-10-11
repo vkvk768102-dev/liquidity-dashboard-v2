@@ -8,6 +8,7 @@ const STALE_DAYS = 10; // 기준일보다 이만큼 오래된 값은 "오래된 
 const WATCH_PCT = 10; // 미국 CDS가 기간 시작 대비 이만큼(%) 오르면 주의
 const BAD_PCT = 20; // 이만큼(%) 오르면 경계
 const US_BAD_BP = 50; // 미국 CDS가 이 수준(bp) 이상이면 경계
+const MOVER_PCT = 20; // 한 달 새 이만큼(%) 이상 오른 나라를 해석에 적음
 
 // 위험도 구간 (bp). 위에서부터 차례로 확인
 const GRADES = [
@@ -123,7 +124,9 @@ function UsTrendChart({ points }) {
         {labeled.map((i) => {
           const c = coords[i];
           const anchor = i === 0 ? "start" : i === coords.length - 1 ? "end" : "middle";
-          const below = i === iMin && i !== iMax;
+          // 끝 값이 최고점 바로 옆이면 숫자가 겹치므로 끝 값은 점 아래에 적음
+          const nearMax = i === coords.length - 1 && i !== iMax && Math.abs(coords[iMax].x - c.x) < 40;
+          const below = (i === iMin && i !== iMax) || nearMax;
           return (
             <g key={i}>
               <circle cx={c.x} cy={c.y} r="4" fill={NAVY} stroke="#fff" strokeWidth="2" />
@@ -187,6 +190,8 @@ export default function SovereignCdsCard() {
   const historySnapshot = data?.historySource === "snapshot";
 
   const isStale = (c) => c.date && asOf && dayMs(asOf) - dayMs(c.date) > STALE_DAYS * 86400000;
+  // 1개월·6개월 변화가 모두 0이면 값이 한동안 갱신되지 않은 것으로 봄
+  const isFrozen = (c) => c.var1m === 0 && c.var6m === 0;
 
   // 미국 CDS: 최신 값, 일주일 전(7일 이상 앞선 값 중 가장 가까운 날), 기간 시작 대비
   const usLatest = points.length ? points[points.length - 1] : null;
@@ -228,11 +233,11 @@ export default function SovereignCdsCard() {
   const high = countries.filter((c) => c.value >= 100);
   if (high.length) lines.push(`100bp 이상(높음 이상): ${high.map((c) => c.name).join("·")}`);
   const movers = countries
-    .filter((c) => c.changePct != null && c.changePct >= 5 && !isStale(c))
-    .sort((a, b) => b.changePct - a.changePct)
+    .filter((c) => c.var1m != null && c.var1m >= MOVER_PCT && !isStale(c))
+    .sort((a, b) => b.var1m - a.var1m)
     .slice(0, 3);
   if (movers.length) {
-    lines.push(`하루 새 많이 오른 곳: ${movers.map((c) => `${c.name} ${signed(c.changePct)}%`).join(" · ")}`);
+    lines.push(`한 달 새 많이 오른 곳: ${movers.map((c) => `${c.name} ${signed(c.var1m, 0)}%`).join(" · ")}`);
   }
 
   // 표를 좌우 두 개로 나눠 보여 주므로 칸 여백을 작게 두고 줄바꿈을 막음
@@ -288,7 +293,7 @@ export default function SovereignCdsCard() {
                 marginBottom: 12,
               }}
             >
-              investing.com 자동 조회가 막혀 {isSnapshot && historySnapshot ? "표와 추이 모두" : isSnapshot ? "국가별 표는" : "미국 추이는"}{" "}
+              자동 조회에 실패해 {isSnapshot && historySnapshot ? "표와 추이 모두" : isSnapshot ? "국가별 표는" : "미국 추이는"}{" "}
               저장해 둔 값({fmtMd(data.snapshotTaken)} 확인)을 보여 주는 중입니다. 최신 값이 아닐 수 있습니다.
             </div>
           )}
@@ -340,13 +345,16 @@ export default function SovereignCdsCard() {
                 <tbody>
                   {list.map((c) => {
                     const g = gradeOf(c.value);
-                    const stale = isStale(c);
+                    const frozen = isFrozen(c);
+                    const stale = isStale(c) || frozen;
                     const focus = c.key === "US" || c.key === "KR";
                     return (
                       <tr key={c.key} style={{ borderBottom: "1px solid #e5e7eb", background: focus ? "#eff6ff" : "transparent" }}>
                         <td style={{ ...td, textAlign: "left", paddingLeft: 3, fontWeight: focus ? 700 : 600, lineHeight: 1.25 }}>
                           {c.flag} {c.name}
-                          {stale && <div style={{ fontSize: 9.5, color: "#9ca3af", fontWeight: 400 }}>{fmtMd(c.date)} 값</div>}
+                          {stale && (
+                            <div style={{ fontSize: 9.5, color: "#9ca3af", fontWeight: 400 }}>{frozen ? "갱신 멈춤" : `${fmtMd(c.date)} 값`}</div>
+                          )}
                         </td>
                         <td style={{ ...td, fontWeight: 700, color: stale ? "#9ca3af" : "#111827" }}>{fmtBp(c.value)}</td>
                         {/* 화면이 아주 좁으면 "매우 높음"만 두 줄로 접힘 */}
@@ -383,8 +391,8 @@ export default function SovereignCdsCard() {
             시작보다 {WATCH_PCT}% 이상 오르면 주의, {BAD_PCT}% 이상 오르거나 {US_BAD_BP}bp를 넘으면 경계.
           </div>
           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 10 }}>
-            데이터 출처: investing.com (무료, API 키 불필요). 국가마다 값이 갱신된 날짜가 달라 며칠씩 차이 날 수 있습니다. 종합 신호등
-            계산에는 포함하지 않습니다.
+            데이터 출처: worldgovernmentbonds.com (무료, API 키 불필요). 국가마다 값이 갱신된 날짜가 달라 며칠씩 차이 날 수 있고,
+            "갱신 멈춤"은 값이 한동안 바뀌지 않은 나라입니다. 종합 신호등 계산에는 포함하지 않습니다.
           </div>
         </>
       )}
