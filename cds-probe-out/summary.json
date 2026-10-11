@@ -1,0 +1,371 @@
+{
+  "at": "2026-10-11T01:53:53.029Z",
+  "list": {
+    "pageUrl": "https://www.worldgovernmentbonds.com/sovereign-cds/",
+    "pageStatus": 200,
+    "pageLength": 26559,
+    "vars": {
+      "JS_VARIABLE": "jsGlobalVars",
+      "ENDPOINT": "https://www.worldgovernmentbonds.com/wp-json/cds/v1/main"
+    },
+    "postStatus": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "bodyLength": 50796,
+    "isJson": true,
+    "shape": {
+      "success": true,
+      "chart": "str(11402): <div id=\"containerChart\"\n      class=\"auto-click-on-load auto-click-wh",
+      "table": "str(32742): <div class=\"responsive-warn\">Swipe left to see all data</div>\n<div cla"
+    },
+    "bodyHead": "{\"success\":true,\"chart\":\"<div id=\\\"containerChart\\\"\\n      class=\\\"auto-click-on-load auto-click-when-visible\\\"\\n      onclick=\\\"drawHighmap(this, map_chart_options, 'custom\\/world');\\\" style=\\\"height: 350px; min-width: 310px\\\">\\n  <div class=\\\"ac-loading-spin\\\" style=\\\"display:table; width:100%; height:350px;\\\">\\n  <div class=\\\"w3-ultralight-gray w3-center -f13\\\" style=\\\"display: table-cell; vertical-align: middle;\\\">\\n     <i class=\\\"fa fa-spinner fa-spin\\\" style=\\\"font-size:30px;\\\"><\\/i><br>\\n     Loading data<br>\\n     Please wait\\n  <\\/div>\\n<\\/div>\\n\\n<\\/div>\\n\\n<script type=\\\"text\\/javascript\\\">\\nvar data = [\\n\\t\\t\\t\\t{\\n\\t\\t\\t\\\"code\\\": \\\"CH\\\",\\n\\t\\t\\t\\\"value\\\": 7.75,\\n\\t\\t\\t\\\"name\\\": \\\"Switzerland\\\",\\n\\t\\t\\t\\\"flag\\\": \\\"ch\\\",\\n\\t\\t\\t\\\"desc\\\": '<span class=\\\"f32\\\" style=\\\"vertical-align: middle !important;\\\"><span class=\\\"flag ch\\\" style=\\\"vertical-align: middle !important;\\\"><\\/span><\\/span> Switzerland<div style=\\\"clear\\\">CDS: <b>7.75<\\/b>'\\n\\t\\t},\\n\\t\\t\\t\\t{\\n\\t\\t\\t\\\"code\\\": \\\"SE\\\",\\n\\t\\t\\t\\\"value\\\": 9.45,\\n\\t\\t\\t\\\"name\\\": \\\"Sweden\\\",\\n\\t\\t\\t\\\"flag\\\": \\\"se\\\",\\n\\t\\t\\t\\\"desc\\\": '<span class=\\\"f32\\\" style=\\\"vertical-align: middle !important;\\\"><span class=\\\"flag se\\\" style=\\\"vertical-align: middle !important;\\\"><\\/span><\\/span> Sweden<div style=\\\"clear\\\">CDS: <b>9.45<\\/b>'\\n\\t\\t},\\n\\t\\t\\t\\t{\\n\\t\\t\\t\\\"code\\\": \\\"DK\\\",\\n\\t\\t\\t\\\"value\\\": 9.58,\\n\\t\\t\\t\\\"name\\\": \\\"Denmark\\\",\\n\\t\\t\\t\\\"flag\\\": \\\"dk\\\",\\n\\t\\t\\t\\\"desc\\\": '<span class=\\\"f32\\\" style=\\\"vertical-align: middle !importa"
+  },
+  "us": {
+    "pageUrl": "https://www.worldgovernmentbonds.com/cds-historical-data/united-states/5-years/",
+    "pageStatus": 200,
+    "pageLength": 36635,
+    "vars": {
+      "JS_VARIABLE": "jsGlobalVars",
+      "FUNCTION": "CDS",
+      "DOMESTIC": true,
+      "ENDPOINT": "https://www.worldgovernmentbonds.com/wp-json/common/v1/historical",
+      "DATE_RIF": "2099-12-31",
+      "DEBUG": true,
+      "OBJ": {
+        "UNIT": "",
+        "DECIMAL": 2,
+        "UNIT_DELTA": "%",
+        "DECIMAL_DELTA": 2
+      },
+      "COUNTRY1": {
+        "SYMBOL": "6",
+        "PAESE": "United States",
+        "PAESE_UPPERCASE": "UNITED STATES",
+        "BANDIERA": "us",
+        "URL_PAGE": "united-states"
+      },
+      "COUNTRY2": null,
+      "OBJ1": {
+        "DURATA_STRING": "5 Years",
+        "DURATA": 60
+      },
+      "OBJ2": null
+    },
+    "postStatus": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "bodyLength": 389198,
+    "isJson": true,
+    "shape": {
+      "success": true,
+      "result": {
+        "num": 3308,
+        "quote": {
+          "1": {
+            "CLOSE_VAL": 21.1,
+            "DATA_VAL": "2017-04-16",
+            "TIME_VAL": "2017-04-16 17:45:06",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "2": {
+            "CLOSE_VAL": 21.1,
+            "DATA_VAL": "2017-04-17",
+            "TIME_VAL": "2017-04-17 17:45:06",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "3": {
+            "CLOSE_VAL": 21.6,
+            "DATA_VAL": "2017-04-18",
+            "TIME_VAL": "2017-04-18 17:45:07",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "4": {
+            "CLOSE_VAL": 22.5,
+            "DATA_VAL": "2017-04-19",
+            "TIME_VAL": "2017-04-19 17:45:09",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "5": {
+            "CLOSE_VAL": 23.3,
+            "DATA_VAL": "2017-04-20",
+            "TIME_VAL": "2017-04-20 17:45:07",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "6": {
+            "CLOSE_VAL": 22.4,
+            "DATA_VAL": "2017-04-21",
+            "TIME_VAL": "2017-04-21 17:45:09",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "7": {
+            "CLOSE_VAL": 22.4,
+            "DATA_VAL": "2017-04-22",
+            "TIME_VAL": "2017-04-22 17:45:09",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "8": {
+            "CLOSE_VAL": 22.4,
+            "DATA_VAL": "2017-04-23",
+            "TIME_VAL": "2017-04-23 17:45:06",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "9": {
+            "CLOSE_VAL": 22.4,
+            "DATA_VAL": "2017-04-24",
+            "TIME_VAL": "2017-04-24 17:45:07",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "10": {
+            "CLOSE_VAL": 23.2,
+            "DATA_VAL": "2017-04-25",
+            "TIME_VAL": "2017-04-25 17:45:06",
+            "EXTRA_1": "0",
+            "EXTRA_2": "0"
+          },
+          "_moreKeys": "3298개 더 (마지막: 3308)"
+        },
+        "hLevel": {
+          "yearly": {
+            "2017": {
+              "dateFrom": "2017-04-16",
+              "dateTo": "2017-31-12",
+              "maxVal": 24.2,
+              "minVal": 15.8,
+              "maxValData": "2017-08-14",
+              "minValData": "2017-11-10",
+              "firstVal": 21.1,
+              "firstValData": "2017-04-16",
+              "firstInRangeVal": 21.1,
+              "firstInRangeValData": "2017-04-16",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2018": {
+              "dateFrom": "2018-01-01",
+              "dateTo": "2018-31-12",
+              "maxVal": 20.9,
+              "minVal": 17,
+              "maxValData": "2018-09-21",
+              "minValData": "2018-12-06",
+              "firstVal": 18,
+              "firstValData": "2018-01-01",
+              "firstInRangeVal": 18,
+              "firstInRangeValData": "2018-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2019": {
+              "dateFrom": "2019-01-01",
+              "dateTo": "2019-31-12",
+              "maxVal": 20.2,
+              "minVal": 13.8,
+              "maxValData": "2019-03-21",
+              "minValData": "2019-07-10",
+              "firstVal": 18.2,
+              "firstValData": "2019-01-01",
+              "firstInRangeVal": 18.2,
+              "firstInRangeValData": "2019-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2020": {
+              "dateFrom": "2020-01-01",
+              "dateTo": "2020-31-12",
+              "maxVal": 23.3,
+              "minVal": 12.4,
+              "maxValData": "2020-03-24",
+              "minValData": "2020-12-24",
+              "firstVal": 15.5,
+              "firstValData": "2020-01-01",
+              "firstInRangeVal": 15.5,
+              "firstInRangeValData": "2020-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2021": {
+              "dateFrom": "2021-01-01",
+              "dateTo": "2021-31-12",
+              "maxVal": 17.4,
+              "minVal": 8.2,
+              "maxValData": "2021-10-07",
+              "minValData": "2021-06-22",
+              "firstVal": 12.7,
+              "firstValData": "2021-01-01",
+              "firstInRangeVal": 12.7,
+              "firstInRangeValData": "2021-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2022": {
+              "dateFrom": "2022-01-01",
+              "dateTo": "2022-31-12",
+              "maxVal": 30.58,
+              "minVal": 10.7,
+              "maxValData": "2022-11-04",
+              "minValData": "2022-03-22",
+              "firstVal": 11.7,
+              "firstValData": "2022-01-01",
+              "firstInRangeVal": 11.7,
+              "firstInRangeValData": "2022-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2023": {
+              "dateFrom": "2023-01-01",
+              "dateTo": "2023-31-12",
+              "maxVal": 69.76,
+              "minVal": 19.69,
+              "maxValData": "2023-05-19",
+              "minValData": "2023-07-23",
+              "firstVal": 27.49,
+              "firstValData": "2023-01-01",
+              "firstInRangeVal": 27.49,
+              "firstInRangeValData": "2023-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2024": {
+              "dateFrom": "2024-01-01",
+              "dateTo": "2024-31-12",
+              "maxVal": 42.8,
+              "minVal": 28.78,
+              "maxValData": "2024-01-08",
+              "minValData": "2024-12-18",
+              "firstVal": 42.78,
+              "firstValData": "2024-01-01",
+              "firstInRangeVal": 42.78,
+              "firstInRangeValData": "2024-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2025": {
+              "dateFrom": "2025-01-01",
+              "dateTo": "2025-31-12",
+              "maxVal": 52.25,
+              "minVal": 26.54,
+              "maxValData": "2025-04-27",
+              "minValData": "2025-12-31",
+              "firstVal": 29.23,
+              "firstValData": "2025-01-01",
+              "firstInRangeVal": 29.23,
+              "firstInRangeValData": "2025-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            },
+            "2026": {
+              "dateFrom": "2026-01-01",
+              "dateTo": "2026-10-09",
+              "maxVal": 39.15,
+              "minVal": 26.09,
+              "maxValData": "2026-10-08",
+              "minValData": "2026-01-14",
+              "firstVal": 26.54,
+              "firstValData": "2026-01-01",
+              "firstInRangeVal": 26.54,
+              "firstInRangeValData": "2026-01-01",
+              "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+            }
+          },
+          "1g": {
+            "dateFrom": "2026-10-08",
+            "dateTo": "2026-10-09",
+            "maxVal": 39.15,
+            "minVal": 37.36,
+            "maxValData": "2026-10-08",
+            "minValData": "2026-10-09",
+            "firstVal": 39.15,
+            "firstValData": "2026-10-08",
+            "firstInRangeVal": 39.15,
+            "firstInRangeValData": "2026-10-08",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "1w": {
+            "dateFrom": "2026-10-02",
+            "dateTo": "2026-10-09",
+            "maxVal": 39.15,
+            "minVal": 36.43,
+            "maxValData": "2026-10-08",
+            "minValData": "2026-10-02",
+            "firstVal": 36.43,
+            "firstValData": "2026-10-02",
+            "firstInRangeVal": 36.43,
+            "firstInRangeValData": "2026-10-02",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "1m": {
+            "dateFrom": "2026-09-09",
+            "dateTo": "2026-10-09",
+            "maxVal": 39.15,
+            "minVal": 31.5,
+            "maxValData": "2026-10-08",
+            "minValData": "2026-09-22",
+            "firstVal": 31.94,
+            "firstValData": "2026-09-09",
+            "firstInRangeVal": 31.94,
+            "firstInRangeValData": "2026-09-09",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "6m": {
+            "dateFrom": "2026-04-09",
+            "dateTo": "2026-10-09",
+            "maxVal": 39.15,
+            "minVal": 31.5,
+            "maxValData": "2026-10-08",
+            "minValData": "2026-09-22",
+            "firstVal": 37.34,
+            "firstValData": "2026-04-09",
+            "firstInRangeVal": 37.34,
+            "firstInRangeValData": "2026-04-09",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "1y": {
+            "dateFrom": "2025-10-09",
+            "dateTo": "2026-10-09",
+            "maxVal": 39.15,
+            "minVal": 26.09,
+            "maxValData": "2026-10-08",
+            "minValData": "2026-01-14",
+            "firstVal": 37.3,
+            "firstValData": "2025-10-09",
+            "firstInRangeVal": 37.3,
+            "firstInRangeValData": "2025-10-09",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "2y": {
+            "dateFrom": "2024-10-09",
+            "dateTo": "2026-10-09",
+            "maxVal": 52.25,
+            "minVal": 26.09,
+            "maxValData": "2025-04-27",
+            "minValData": "2026-01-14",
+            "firstVal": 36.86,
+            "firstValData": "2024-10-09",
+            "firstInRangeVal": 36.86,
+            "firstInRangeValData": "2024-10-09",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          },
+          "forever": {
+            "dateFrom": "1526-10-09",
+            "dateTo": "2026-10-09",
+            "maxVal": 69.76,
+            "minVal": 8.2,
+            "maxValData": "2023-05-19",
+            "minValData": "2021-06-22",
+            "firstVal": 21.1,
+            "firstValData": "2017-04-16",
+            "firstInRangeVal": 21.1,
+            "firstInRangeValData": "2017-04-16",
+            "_moreKeys": "10개 더 (마지막: candlestickPercEnd)"
+          }
+        },
+        "palette": "borsaInverso",
+        "ultimoValoreToPercAbs": "null",
+        "ultimoValore": "37.36",
+        "valore1": "null",
+        "valore2": "null",
+        "spreadCompareString": "null",
+        "probDefault": "0.62",
+        "_moreKeys": "15개 더 (마지막: htmlYearChange)"
+      }
+    },
+    "bodyHead": "{\"success\":true,\"result\":{\"num\":3308,\"quote\":{\"1\":{\"CLOSE_VAL\":21.1,\"DATA_VAL\":\"2017-04-16\",\"TIME_VAL\":\"2017-04-16 17:45:06\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"2\":{\"CLOSE_VAL\":21.1,\"DATA_VAL\":\"2017-04-17\",\"TIME_VAL\":\"2017-04-17 17:45:06\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"3\":{\"CLOSE_VAL\":21.6,\"DATA_VAL\":\"2017-04-18\",\"TIME_VAL\":\"2017-04-18 17:45:07\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"4\":{\"CLOSE_VAL\":22.5,\"DATA_VAL\":\"2017-04-19\",\"TIME_VAL\":\"2017-04-19 17:45:09\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"5\":{\"CLOSE_VAL\":23.3,\"DATA_VAL\":\"2017-04-20\",\"TIME_VAL\":\"2017-04-20 17:45:07\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"6\":{\"CLOSE_VAL\":22.4,\"DATA_VAL\":\"2017-04-21\",\"TIME_VAL\":\"2017-04-21 17:45:09\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"7\":{\"CLOSE_VAL\":22.4,\"DATA_VAL\":\"2017-04-22\",\"TIME_VAL\":\"2017-04-22 17:45:09\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"8\":{\"CLOSE_VAL\":22.4,\"DATA_VAL\":\"2017-04-23\",\"TIME_VAL\":\"2017-04-23 17:45:06\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"9\":{\"CLOSE_VAL\":22.4,\"DATA_VAL\":\"2017-04-24\",\"TIME_VAL\":\"2017-04-24 17:45:07\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"10\":{\"CLOSE_VAL\":23.2,\"DATA_VAL\":\"2017-04-25\",\"TIME_VAL\":\"2017-04-25 17:45:06\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"11\":{\"CLOSE_VAL\":23.2,\"DATA_VAL\":\"2017-04-26\",\"TIME_VAL\":\"2017-04-26 17:45:06\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"12\":{\"CLOSE_VAL\":22.6,\"DATA_VAL\":\"2017-04-27\",\"TIME_VAL\":\"2017-04-27 17:45:07\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"13\":{\"CLOSE_VAL\":22.2,\"DATA_VAL\":\"2017-04-28\",\"TIME_VAL\":\"2017-04-28 17:45:08\",\"EXTRA_1\":\"0\",\"EXTRA_2\":\"0\"},\"14\":{\"CLOSE_VAL\":22.3,\"DATA_VAL\":\"2017-04-29\""
+  }
+}
