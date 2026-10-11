@@ -1,13 +1,17 @@
 # 파일 위치: .github/workflows/cds-test.yml
-# 시험용(2차): GitHub 서버에서 CDS 데이터 출처들을 읽을 수 있는지 확인하고,
-# 결과를 실행 화면의 Annotations 칸에 적습니다. 사이트(Vercel)에는 아무 영향이 없습니다.
+# 시험용(3차): GitHub 서버에서 worldgovernmentbonds.com의 CDS 데이터를 받아
+# 그 내용을 "cds-probe"라는 별도 가지에 저장합니다. 사이트(main)에는 영향이 없습니다.
 name: CDS 자동 조회 시험
 
 on:
   push:
     paths:
       - ".github/workflows/cds-test.yml"
+      - "app/api/cds-probe/route.js"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -18,114 +22,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: 출처별 읽기 시험
+      - name: 데이터 받아 보기
         run: |
-          cat > cds-test.mjs <<'EOF'
-          import { execFileSync } from "node:child_process";
+          cat > cds-probe-run.mjs <<'EOF'
+          import { mkdirSync, writeFileSync } from "node:fs";
+          import { GET } from "./app/api/cds-probe/route.js";
 
-          const UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-          const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
-          const LANG = "en-US,en;q=0.9";
-
-          // 결과를 Annotations 칸에 한 줄씩 적음
           const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, " ").replace(/\n/g, " ");
-          const note = (title, msg) => console.log(`::notice title=${esc(title).replace(/[,:]/g, " ")}::${esc(msg).slice(0, 1800)}`);
+          const res = await GET(new Request("http://localhost/api/cds-probe?full=1"));
+          const data = await res.json();
 
-          async function viaFetch(url) {
-            try {
-              const res = await fetch(url, {
-                headers: { "User-Agent": UA, Accept: ACCEPT, "Accept-Language": LANG },
-                signal: AbortSignal.timeout(20000),
-              });
-              return { status: res.status, html: await res.text() };
-            } catch (e) {
-              return { status: `오류 ${e.cause?.code || e.message}`, html: "" };
-            }
-          }
-
-          function viaCurl(url) {
-            try {
-              const out = execFileSync(
-                "curl",
-                ["-sS", "-L", "--compressed", "-m", "20", "-A", UA, "-H", `Accept: ${ACCEPT}`, "-H", `Accept-Language: ${LANG}`, "-w", "\n%{http_code}", url],
-                { encoding: "utf8", maxBuffer: 50 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }
-              );
-              const cut = out.lastIndexOf("\n");
-              return { status: Number(out.slice(cut + 1)), html: out.slice(0, cut) };
-            } catch (e) {
-              return { status: `오류 ${String(e.stderr || e.message).split("\n")[0].slice(0, 80)}`, html: "" };
-            }
-          }
-
-          const titleOf = (html) => (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || "").replace(/\s+/g, " ").trim().slice(0, 60);
-
-          let parse = null;
-          let parseError = "";
-          try {
-            parse = await import("./app/lib/cdsParse.js");
-          } catch (e) {
-            parseError = e.message;
-          }
-          if (parseError) note("0 준비", `cdsParse.js를 불러오지 못함: ${parseError}`);
-
-          // 1) investing.com (지금 쓰는 출처)
-          const INV_TABLE = "https://www.investing.com/rates-bonds/world-cds";
-          const INV_HIST = "https://www.investing.com/rates-bonds/united-states-cds-5-years-usd-historical-data";
-          let investingOk = false;
-          for (const [name, get] of [["fetch", viaFetch], ["curl", viaCurl]]) {
-            const t = await get(INV_TABLE);
-            const h = await get(INV_HIST);
-            let rows = new Map();
-            let hist = [];
-            try {
-              if (parse && t.status === 200) rows = parse.parseTable(t.html);
-              if (parse && h.status === 200) hist = parse.parseHistory(h.html);
-            } catch (e) {
-              parseError = e.message;
-            }
-            const ok = rows.size >= 5 && hist.length >= 3;
-            if (ok) investingOk = true;
-            const us = rows.get("US");
-            note(
-              `1 investing ${name} ${ok ? "성공" : "실패"}`,
-              `표: 응답 ${t.status}, 글자수 ${t.html.length}, 제목 "${titleOf(t.html)}", 국가 ${rows.size}개${us ? `, 미국 ${us.value}bp ${us.date}` : ""} | ` +
-                `추이: 응답 ${h.status}, 글자수 ${h.html.length}, 제목 "${titleOf(h.html)}", 날짜 ${hist.length}개` +
-                (hist.length ? `, 마지막 ${hist[hist.length - 1].date}=${hist[hist.length - 1].value}` : "") +
-                (parseError ? ` | 읽기 오류: ${parseError}` : "")
+          mkdirSync("cds-probe-out", { recursive: true });
+          let ok = true;
+          for (const key of ["list", "us"]) {
+            const d = data[key] || {};
+            writeFileSync(`cds-probe-out/${key}-body.txt`, d.body ?? "");
+            delete d.body;
+            const good = d.postStatus === 200 && d.bodyLength > 200;
+            if (!good) ok = false;
+            console.log(
+              `::notice title=3 wgb ${key} ${good ? "성공" : "실패"}::` +
+                esc(`페이지 ${d.pageStatus}, 데이터 응답 ${d.postStatus}, 형식 ${d.contentType}, 글자수 ${d.bodyLength}, JSON ${d.isJson}${d.error ? `, 오류 ${d.error}` : ""}`)
             );
           }
-
-          // 2) worldgovernmentbonds.com (대신 쓸 수 있는지 보는 후보)
-          const WGB = [
-            ["목록", "https://www.worldgovernmentbonds.com/sovereign-cds/"],
-            ["미국", "https://www.worldgovernmentbonds.com/cds-historical-data/united-states/5-years/"],
-          ];
-          for (const [label, url] of WGB) {
-            let r = await viaFetch(url);
-            let how = "fetch";
-            if (r.status !== 200) {
-              const c = viaCurl(url);
-              if (c.status === 200) {
-                r = c;
-                how = "curl";
-              }
-            }
-            const html = r.html;
-            const endpoints = [...new Set((html.match(/wp-json(?:\\?\/[A-Za-z0-9_.-]+)+/g) || []).map((s) => s.replace(/\\/g, "")))].slice(0, 12);
-            const vars = [];
-            const reVar = /(jsGlobalVars|GLOBALVAR)\s*[=:]\s*(\{[\s\S]{0,700})/g;
-            let m;
-            while ((m = reVar.exec(html)) && vars.length < 2) vars.push(m[2].replace(/\s+/g, " "));
-            const nums = (html.match(/\b\d{1,4}\.\d{2}\b/g) || []).length;
-            note(
-              `2 wgb ${label} ${r.status === 200 ? "접속됨" : "실패"}`,
-              `방법 ${how}, 응답 ${r.status}, 글자수 ${html.length}, 제목 "${titleOf(html)}", 소수 숫자 ${nums}개 | 주소: ${endpoints.join(" , ") || "없음"}`
-            );
-            if (vars.length) note(`2 wgb ${label} 설정값`, vars.join(" ||| "));
-          }
-
-          console.log(investingOk ? "결과: investing.com 읽기 성공" : "결과: investing.com 읽기 실패");
-          process.exit(investingOk ? 0 : 1);
+          writeFileSync("cds-probe-out/summary.json", JSON.stringify(data, null, 2));
+          process.exit(ok ? 0 : 1);
           EOF
-          node cds-test.mjs
+          node cds-probe-run.mjs
+      - name: 결과 저장 (cds-probe 가지)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/probe && cp -r cds-probe-out /tmp/probe/ 2>/dev/null || mkdir -p /tmp/probe/cds-probe-out
+          cd /tmp/probe
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > cds-probe-out/ran-at.txt
+          echo '{"git":{"deploymentEnabled":false}}' > vercel.json
+          git init -q -b cds-probe
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "CDS 시험 결과"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" cds-probe
